@@ -1,277 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
-// ╔══════════════════════════════════════════════════════════╗
-// ║  SUPABASE CLOUD LAYER                                    ║
-// ╚══════════════════════════════════════════════════════════╝
-var _sb = supabase.createClient(
-  'https://zwrdxaboowtdknaxebjj.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3cmR4YWJvb3d0ZGtuYXhlYmpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxMjQ1MTksImV4cCI6MjEwMTcwMDUxOX0.x13PcpseDUF7ypOI22Jxt2QaHa_JecqTFgN0R-rrPRs'
-);
-var _sbUser = null, _sbProfile = null, _cloudTimer = null, _cloudMode = false;
-
-function setCS(type, msg) {
-  var dot = document.getElementById('cloudDot');
-  var txt = document.getElementById('cloudMsg');
-  if (!dot || !txt) return;
-  dot.className = 'cloud-dot' + (type === 'saving' ? ' saving' : type === 'err' ? ' err' : '');
-  txt.textContent = msg;
-}
-
-function doLogin() {
-  var email = document.getElementById('loginEmail').value.trim();
-  var pwd   = document.getElementById('loginPwd').value;
-  var err   = document.getElementById('loginErr');
-  var btn   = document.getElementById('loginBtn');
-  err.style.display = 'none';
-  if (!email || !pwd) { err.textContent = 'Enter email and password'; err.style.display = 'block'; return; }
-  btn.disabled = true; btn.textContent = 'Signing in...';
-  _sb.auth.signInWithPassword({ email: email, password: pwd }).then(function(res) {
-    if (res.error) {
-      err.textContent = res.error.message;
-      err.style.display = 'block';
-      btn.disabled = false; btn.textContent = 'Sign In';
-      return;
-    }
-    afterCloudLogin(res.data.user);
-  });
-}
-
-function afterCloudLogin(user) {
-  _sbUser = user;
-  _sb.from('profiles').select('*').eq('id', user.id).single().then(function(res) {
-    _sbProfile = res.data;
-    var prof = res.data;
-    // Check expiry
-    if (prof && prof.expires_at && new Date(prof.expires_at) < new Date()) {
-      var err = document.getElementById('loginErr');
-      err.textContent = 'Access expired ' + new Date(prof.expires_at).toLocaleDateString('en-GB') + '. Contact admin.';
-      err.style.display = 'block';
-      document.getElementById('loginBtn').disabled = false;
-      document.getElementById('loginBtn').textContent = 'Sign In';
-      _sb.auth.signOut(); return;
-    }
-    if (prof && prof.is_active === false) {
-      var err2 = document.getElementById('loginErr');
-      err2.textContent = 'Account revoked. Contact admin.';
-      err2.style.display = 'block';
-      document.getElementById('loginBtn').disabled = false;
-      document.getElementById('loginBtn').textContent = 'Sign In';
-      _sb.auth.signOut(); return;
-    }
-    _cloudMode = true;
-    document.getElementById('loginScreen').style.display = 'none';
-    var cb = document.getElementById('cloudBar');
-    if (cb) cb.style.display = 'flex';
-    var cu = document.getElementById('cloudUser');
-    if (cu) cu.textContent = (prof && prof.company_name) ? prof.company_name : user.email;
-    var cr = document.getElementById('cloudRole');
-    if (cr) cr.textContent = (prof && prof.role === 'admin') ? 'Administrator' : 'Client';
-    // Admin button
-    if (prof && prof.role === 'admin') {
-      var nb = document.querySelector('.nav-actions');
-      if (nb) {
-        var ab = document.createElement('button');
-        ab.className = 'btn btn-admin';
-        ab.textContent = 'Admin Panel';
-        ab.onclick = function() {
-          document.getElementById('adminFs').className = 'admin-fs open';
-          loadAdminPanel();
-        };
-        nb.insertBefore(ab, nb.firstChild);
-      }
-    }
-    // Sign out button
-    var nb2 = document.querySelector('.nav-actions');
-    if (nb2) {
-      var lb = document.createElement('button');
-      lb.className = 'btn';
-      lb.style.cssText = 'background:#2a0a0a;color:#f87171;border-color:rgba(220,38,38,.3);';
-      lb.textContent = 'Sign Out';
-      lb.onclick = doCloudLogout;
-      nb2.appendChild(lb);
-    }
-    setCS('ok', 'Connected');
-    cloudLoad().then(function() { init(); });
-  });
-}
-
-function doCloudLogout() {
-  _sb.auth.signOut();
-  _sbUser = null; _sbProfile = null; _cloudMode = false;
-  document.getElementById('cloudBar').style.display = 'none';
-  document.getElementById('loginScreen').style.display = 'flex';
-  document.getElementById('loginBtn').disabled = false;
-  document.getElementById('loginBtn').textContent = 'Sign In';
-  document.getElementById('loginEmail').value = '';
-  document.getElementById('loginPwd').value = '';
-}
-
-function cloudLoad() {
-  if (!_sbUser) return Promise.resolve();
-  setCS('saving', 'Loading...');
-  return _sb.from('attendance_data')
-    .select('*').eq('user_id', _sbUser.id)
-    .eq('year', currentYear).eq('month', currentMonth)
-    .then(function(res) {
-      if (res.error) { setCS('err', 'Load error'); return; }
-      if (res.data) res.data.forEach(function(row) {
-        if (row.data && row.data.length > 0) {
-          sheets[row.dept] = row.data;
-          sheets[row.dept].forEach(function(s) {
-            if (s.id > sheetCtr) sheetCtr = s.id;
-            (s.entries || []).forEach(function(e) { if (e.id > entryCtr) entryCtr = e.id; });
-          });
-          if (!activeIds[row.dept] && sheets[row.dept].length > 0)
-            activeIds[row.dept] = sheets[row.dept][0].id;
-        }
-      });
-      setCS('ok', 'Synced');
-    });
-}
-
-function cloudSaveDept(dept) {
-  if (!_sbUser) return;
-  _sb.from('attendance_data').upsert({
-    user_id: _sbUser.id, dept: dept,
-    year: currentYear, month: currentMonth,
-    data: sheets[dept] || [],
-    updated_at: new Date().toISOString()
-  }, { onConflict: 'user_id,dept,year,month' }).then(function(res) {
-    if (res.error) { setCS('err', 'Save failed'); return; }
-    setCS('ok', 'Saved ' + new Date().toLocaleTimeString());
-  });
-}
-
-// Wrap saveDept to also sync cloud
-var _origSaveDept = saveDept;
-saveDept = function(dept) {
-  _origSaveDept(dept);
-  if (!_cloudMode || !_sbUser) return;
-  setCS('saving', 'Saving...');
-  if (_cloudTimer) clearTimeout(_cloudTimer);
-  _cloudTimer = setTimeout(function() { cloudSaveDept(dept); }, 1500);
-};
-
-// Admin panel
-function loadAdminPanel() {
-  if (!_sbProfile || _sbProfile.role !== 'admin') return;
-  _sb.from('profiles').select('*').order('created_at').then(function(res) {
-    var profiles = res.data || [];
-    var now = new Date();
-    var active = profiles.filter(function(p) { return p.is_active && (!p.expires_at || new Date(p.expires_at) > now); }).length;
-    var expired = profiles.filter(function(p) { return p.expires_at && new Date(p.expires_at) < now; }).length;
-    document.getElementById('adminKpis').innerHTML =
-      '<div class="admin-kpi"><div class="admin-kpi-val" style="color:var(--accent);">' + profiles.length + '</div><div class="admin-kpi-lbl">Total Users</div></div>' +
-      '<div class="admin-kpi"><div class="admin-kpi-val" style="color:var(--green);">' + active + '</div><div class="admin-kpi-lbl">Active</div></div>' +
-      '<div class="admin-kpi"><div class="admin-kpi-val" style="color:var(--red);">' + expired + '</div><div class="admin-kpi-lbl">Expired</div></div>' +
-      '<div class="admin-kpi"><div class="admin-kpi-val" style="color:var(--amber);">' + (profiles.length - active - expired) + '</div><div class="admin-kpi-lbl">Revoked</div></div>';
-    document.getElementById('adminUserBody').innerHTML = profiles.map(function(p) {
-      var isExp = p.expires_at && new Date(p.expires_at) < now;
-      var sc = !p.is_active ? 'revoked' : isExp ? 'expired' : 'active';
-      var exp = p.expires_at ? new Date(p.expires_at).toLocaleDateString('en-GB') : 'Never';
-      var actBtns =
-        '<button class="abtn" onclick="adminExtend('' + p.id + '','' + p.email + '')">+30d</button>' +
-        '<button class="abtn" onclick="adminSetExp('' + p.id + '','' + p.email + '')">Expiry</button>' +
-        (p.is_active
-          ? '<button class="abtn red" onclick="adminRevoke('' + p.id + '','' + p.email + '')">Revoke</button>'
-          : '<button class="abtn grn" onclick="adminRestore('' + p.id + '','' + p.email + '')">Restore</button>');
-      return '<tr><td>' + p.email + '</td><td>' + (p.company_name || '') + '</td>' +
-        '<td><span style="font-size:.65rem;background:' + (p.role==='admin'?'#1e3a8a':'#1c1c1c') + ';color:' + (p.role==='admin'?'#93c5fd':'#6b7280') + ';padding:2px 7px;border-radius:4px;">' + p.role + '</span></td>' +
-        '<td style="font-family:var(--mono);font-size:.78rem;">' + exp + '</td>' +
-        '<td><span class="sbadge ' + sc + '">' + sc + '</span></td>' +
-        '<td>' + actBtns + '</td></tr>';
-    }).join('');
-    // Data summary
-    _sb.from('attendance_data').select('*').eq('year', now.getFullYear()).eq('month', now.getMonth()+1).then(function(r2) {
-      var allData = r2.data || [];
-      var html = '<table class="user-tbl"><thead><tr><th>User</th><th>Dept</th><th>Sheets</th><th>Entries</th><th>Shifts</th><th>OT 1.5h</th><th>OT 2.5h</th><th>Total h</th></tr></thead><tbody>';
-      allData.forEach(function(row) {
-        var prof = profiles.find(function(p) { return p.id === row.user_id; });
-        var shts = row.data || [];
-        var sh=0,ot=0,sot=0,tot=0,ent=0;
-        shts.forEach(function(s) { (s.entries||[]).forEach(function(e) {
-          var r=e.result, th=entryTotalH(r); ent++; tot+=th;
-          if(r.dayType==='special'||r.isHoliday) sot+=r.totalSOTHours||0;
-          else if(r.dayType==='poya') sot+=r.totalPoyaHours||0;
-          else if(r.fractional) sh+=r.fractionalShift;
-          else { sh+=r.shiftCount; ot+=r.totalOTMins/60; }
-        }); });
-        html += '<tr><td style="font-weight:600;">' + (prof&&prof.company_name?prof.company_name:prof&&prof.email?prof.email:'') + '</td>' +
-          '<td style="color:' + (DEPT_COLORS[row.dept]||'#fff') + ';">' + row.dept + '</td>' +
-          '<td style="text-align:center;">' + shts.length + '</td>' +
-          '<td style="text-align:center;">' + ent + '</td>' +
-          '<td style="text-align:center;font-family:var(--mono);color:#93c5fd;">' + fmt1(sh) + '</td>' +
-          '<td style="text-align:center;font-family:var(--mono);color:#6ee7b7;">' + fmt1(ot) + '</td>' +
-          '<td style="text-align:center;font-family:var(--mono);color:#fcd34d;">' + fmt1(sot) + '</td>' +
-          '<td style="text-align:center;font-family:var(--mono);color:#67e8f9;">' + fmt1(tot) + '</td></tr>';
-      });
-      html += '</tbody></table>';
-      document.getElementById('adminAllData').innerHTML = html;
-    });
-  });
-}
-
-function adminCreateUser() {
-  var email = document.getElementById('nu_email').value.trim();
-  var pwd   = document.getElementById('nu_pwd').value;
-  var co    = document.getElementById('nu_company').value.trim();
-  var exp   = document.getElementById('nu_expiry').value;
-  if (!email || !pwd) { showToast('Email and password required','err'); return; }
-  _sb.auth.admin.createUser({ email:email, password:pwd, email_confirm:true }).then(function(res) {
-    if (res.error) { showToast('Error: '+res.error.message,'err'); return; }
-    _sb.from('profiles').update({
-      company_name: co||email, role:'client',
-      allowed_depts: ['HRD'],
-      expires_at: exp ? new Date(exp).toISOString() : null,
-      is_active: true
-    }).eq('id', res.data.user.id).then(function() {
-      showToast('Created: '+email,'ok');
-      document.getElementById('nu_email').value='';
-      document.getElementById('nu_pwd').value='';
-      document.getElementById('nu_company').value='';
-      document.getElementById('nu_expiry').value='';
-      loadAdminPanel();
-    });
-  });
-}
-
-function adminRevoke(id,email) {
-  if(!confirm('Revoke '+email+'?'))return;
-  _sb.from('profiles').update({is_active:false}).eq('id',id).then(function(){showToast('Revoked','warn');loadAdminPanel();});
-}
-function adminRestore(id,email) {
-  _sb.from('profiles').update({is_active:true}).eq('id',id).then(function(){showToast('Restored','ok');loadAdminPanel();});
-}
-function adminExtend(id,email) {
-  _sb.from('profiles').select('expires_at').eq('id',id).single().then(function(res){
-    var base = res.data&&res.data.expires_at&&new Date(res.data.expires_at)>new Date() ? new Date(res.data.expires_at) : new Date();
-    base.setDate(base.getDate()+30);
-    _sb.from('profiles').update({expires_at:base.toISOString()}).eq('id',id).then(function(){showToast('+30 days','ok');loadAdminPanel();});
-  });
-}
-function adminSetExp(id,email) {
-  var d=prompt('Expiry date (YYYY-MM-DD) for '+email+':');
-  if(!d)return;
-  _sb.from('profiles').update({expires_at:new Date(d).toISOString()}).eq('id',id).then(function(){showToast('Expiry set','ok');loadAdminPanel();});
-}
-
-// ── CLOUD BOOT ────────────────────────────────────────────────
-window.addEventListener('load', function() {
-  loadTheme(); dedupeEmployees();
-  _sb.auth.getSession().then(function(res) {
-    var session = res.data && res.data.session ? res.data.session : null;
-    if (session) { afterCloudLogin(session.user); }
-    else { document.getElementById('loginScreen').style.display = 'flex'; }
-  });
-  var em = document.getElementById('loginEmail');
-  var pw = document.getElementById('loginPwd');
-  if (em) em.addEventListener('keydown', function(e){ if(e.key==='Enter') pw.focus(); });
-  if (pw) pw.addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
-});
-
-</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ShiftOT Pro</title>
@@ -924,70 +653,6 @@ html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--b
   border-radius:6px;padding:6px 12px;font-size:.78rem;font-weight:600;
   color:var(--green);margin-bottom:12px;text-align:center;}
 .pv-key-hint{font-size:.62rem;color:var(--text3);text-align:center;margin-top:8px;}
-
-/* ── LOGIN + CLOUD ─────────────────────────────────────────── */
-.login-screen{position:fixed;inset:0;background:linear-gradient(135deg,#0a0c10,#0d1526);
-  display:flex;align-items:center;justify-content:center;z-index:9999;}
-.login-box{background:var(--surface);border:1px solid var(--border2);border-radius:16px;
-  padding:40px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.6);}
-.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
-.login-logo-mark{width:40px;height:40px;background:linear-gradient(135deg,var(--accent),#7c3aed);
-  border-radius:10px;display:flex;align-items:center;justify-content:center;
-  color:#fff;font-weight:800;font-size:.9rem;flex-shrink:0;}
-.login-logo-text{font-size:1.3rem;font-weight:800;color:var(--text);}
-.login-subtitle{font-size:.7rem;color:var(--text3);text-transform:uppercase;
-  letter-spacing:.12em;margin-bottom:26px;}
-.login-field{margin-bottom:14px;}
-.login-label{font-size:.7rem;font-weight:600;color:var(--text3);text-transform:uppercase;
-  letter-spacing:.08em;margin-bottom:5px;display:block;}
-.login-input{width:100%;background:var(--surface2);border:1.5px solid var(--border2);
-  border-radius:8px;color:var(--text);font-family:var(--font);font-size:.92rem;
-  padding:10px 14px;outline:none;transition:border-color .12s;}
-.login-input:focus{border-color:var(--accent);}
-.login-btn{width:100%;padding:12px;background:var(--accent);color:#fff;border:none;
-  border-radius:8px;font-family:var(--font);font-size:.95rem;font-weight:700;
-  cursor:pointer;margin-top:6px;}
-.login-btn:hover{background:#1d4ed8;}
-.login-btn:disabled{opacity:.6;cursor:not-allowed;}
-.login-err{color:#f87171;font-size:.78rem;margin-top:8px;text-align:center;
-  background:#2a0a0a;border:1px solid rgba(220,38,38,.3);border-radius:6px;
-  padding:8px 12px;display:none;}
-.login-footer{font-size:.65rem;color:var(--text3);text-align:center;margin-top:18px;line-height:1.6;}
-.cloud-bar{background:var(--surface2);border-bottom:1px solid var(--border);
-  padding:3px 16px;font-size:.65rem;color:var(--text3);display:flex;align-items:center;gap:8px;}
-.cloud-dot{width:7px;height:7px;border-radius:50%;background:#10b981;flex-shrink:0;}
-.cloud-dot.saving{background:#f59e0b;animation:cpulse 1s infinite;}
-.cloud-dot.err{background:#ef4444;}
-@keyframes cpulse{0%,100%{opacity:1;}50%{opacity:.3;}}
-.btn-admin{background:#1e3a8a;color:#93c5fd;border-color:rgba(59,130,246,.4);}
-.btn-admin:hover{background:#1e40af;}
-.admin-fs{display:none;position:fixed;inset:0;background:var(--bg);z-index:800;flex-direction:column;overflow:hidden;}
-.admin-fs.open{display:flex;}
-.admin-nav{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0;}
-.admin-body{flex:1;overflow-y:auto;padding:20px;}
-.admin-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;}
-.admin-kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;}
-.admin-kpi-val{font-size:1.6rem;font-weight:800;font-family:var(--mono);}
-.admin-kpi-lbl{font-size:.62rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-top:4px;}
-.admin-sec{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;margin:16px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--border2);}
-.user-tbl{width:100%;border-collapse:collapse;font-size:.82rem;margin-bottom:20px;}
-.user-tbl th{background:#1a2035;color:#a8b8e0;padding:8px 12px;font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;text-align:left;}
-.user-tbl td{padding:9px 12px;border-bottom:1px solid var(--border);}
-.user-tbl tr:hover td{background:var(--surface2);}
-.sbadge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:.65rem;font-weight:700;}
-.sbadge.active{background:#052e16;color:#34d399;border:1px solid rgba(52,211,153,.3);}
-.sbadge.expired{background:#2a0a0a;color:#f87171;border:1px solid rgba(248,113,113,.3);}
-.sbadge.revoked{background:#1c1c1c;color:#6b7280;border:1px solid rgba(107,114,128,.3);}
-.abtn{padding:4px 9px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-family:var(--font);font-size:.65rem;cursor:pointer;margin-left:3px;}
-.abtn.red{border-color:rgba(220,38,38,.3);color:#f87171;}
-.abtn.grn{border-color:rgba(5,150,105,.3);color:#34d399;}
-.add-user-form{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px;}
-.add-user-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:flex-end;}
-.afield{display:flex;flex-direction:column;gap:4px;}
-.alabel{font-size:.6rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;}
-.ainput{background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:.8rem;padding:6px 10px;outline:none;}
-.ainput:focus{border-color:var(--accent);}
-.asubmit{padding:7px 16px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-family:var(--font);font-size:.8rem;font-weight:700;cursor:pointer;}
 /* ── THEME TOGGLE ── */
 .theme-toggle{display:flex;align-items:center;gap:4px;background:var(--surface2);border:1.5px solid var(--border2);border-radius:20px;padding:3px;cursor:default;flex-shrink:0;}
 .theme-option{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:16px;font-size:.75rem;font-weight:600;cursor:pointer;transition:all .18s;color:var(--text3);white-space:nowrap;border:none;background:none;font-family:var(--font);}
@@ -3407,64 +3072,7 @@ function comparePDF() {
     Generated: ${new Date().toLocaleString()} &nbsp;·&nbsp;
     This report is for internal audit and invoice verification purposes only.
   </div>
-  
-<div class="login-screen" id="loginScreen" style="display:none;">
-  <div class="login-box">
-    <div class="login-logo">
-      <div class="login-logo-mark">S+</div>
-      <div class="login-logo-text">ShiftOT Pro</div>
-    </div>
-    <div class="login-subtitle">Cloud Edition</div>
-    <div class="login-field">
-      <label class="login-label">Email</label>
-      <input class="login-input" type="email" id="loginEmail" placeholder="you@company.com" autocomplete="email">
-    </div>
-    <div class="login-field">
-      <label class="login-label">Password</label>
-      <input class="login-input" type="password" id="loginPwd" placeholder="password" autocomplete="current-password">
-    </div>
-    <button class="login-btn" id="loginBtn" onclick="doLogin()">Sign In</button>
-    <div class="login-err" id="loginErr"></div>
-    <div class="login-footer">&copy; 2026 ShiftOT Pro &mdash; Contact admin for access</div>
-  </div>
-</div>
-<div class="cloud-bar" id="cloudBar" style="display:none;">
-  <div class="cloud-dot" id="cloudDot"></div>
-  <span id="cloudMsg">Connected</span>
-  <span style="margin-left:auto;display:flex;gap:8px;align-items:center;">
-    <span id="cloudUser" style="font-weight:600;font-size:.68rem;"></span>
-    <span id="cloudRole" style="opacity:.6;font-size:.65rem;"></span>
-  </span>
-</div>
-<div class="admin-fs" id="adminFs">
-  <div class="admin-nav">
-    <div style="font-size:1rem;font-weight:800;">Admin Panel &mdash; ShiftOT Pro</div>
-    <div style="margin-left:auto;display:flex;gap:8px;">
-      <button class="btn" onclick="loadAdminPanel()" style="color:var(--green);">Refresh</button>
-      <button class="btn" onclick="document.getElementById('adminFs').className='admin-fs'">Close</button>
-    </div>
-  </div>
-  <div class="admin-body">
-    <div class="admin-kpi-grid" id="adminKpis"></div>
-    <div class="admin-sec">Create New User</div>
-    <div class="add-user-form">
-      <div class="add-user-grid">
-        <div class="afield"><label class="alabel">Email</label><input class="ainput" id="nu_email" type="email" placeholder="user@company.com"></div>
-        <div class="afield"><label class="alabel">Password</label><input class="ainput" id="nu_pwd" type="text" placeholder="password"></div>
-        <div class="afield"><label class="alabel">Company</label><input class="ainput" id="nu_company" placeholder="Company name"></div>
-        <div class="afield"><label class="alabel">Expires</label><input class="ainput" id="nu_expiry" type="date"></div>
-        <button class="asubmit" onclick="adminCreateUser()">Create</button>
-      </div>
-    </div>
-    <div class="admin-sec">All Users</div>
-    <table class="user-tbl"><thead><tr>
-      <th>Email</th><th>Company</th><th>Role</th><th>Expires</th><th>Status</th><th>Actions</th>
-    </tr></thead><tbody id="adminUserBody"></tbody></table>
-    <div class="admin-sec">Current Month Data &mdash; All Users</div>
-    <div id="adminAllData"></div>
-  </div>
-</div>
-</body></html>`;
+  </body></html>`;
 
   const blob=new Blob([html],{type:'text/html'});
   const url=URL.createObjectURL(blob);
@@ -3971,64 +3579,7 @@ function summaryPDF() {
     This summary is generated from ShiftOT Pro and should be verified against attendance records before invoice payment.
     &nbsp;·&nbsp; Generated: ${new Date().toLocaleString()}
   </div>
-  
-<div class="login-screen" id="loginScreen" style="display:none;">
-  <div class="login-box">
-    <div class="login-logo">
-      <div class="login-logo-mark">S+</div>
-      <div class="login-logo-text">ShiftOT Pro</div>
-    </div>
-    <div class="login-subtitle">Cloud Edition</div>
-    <div class="login-field">
-      <label class="login-label">Email</label>
-      <input class="login-input" type="email" id="loginEmail" placeholder="you@company.com" autocomplete="email">
-    </div>
-    <div class="login-field">
-      <label class="login-label">Password</label>
-      <input class="login-input" type="password" id="loginPwd" placeholder="password" autocomplete="current-password">
-    </div>
-    <button class="login-btn" id="loginBtn" onclick="doLogin()">Sign In</button>
-    <div class="login-err" id="loginErr"></div>
-    <div class="login-footer">&copy; 2026 ShiftOT Pro &mdash; Contact admin for access</div>
-  </div>
-</div>
-<div class="cloud-bar" id="cloudBar" style="display:none;">
-  <div class="cloud-dot" id="cloudDot"></div>
-  <span id="cloudMsg">Connected</span>
-  <span style="margin-left:auto;display:flex;gap:8px;align-items:center;">
-    <span id="cloudUser" style="font-weight:600;font-size:.68rem;"></span>
-    <span id="cloudRole" style="opacity:.6;font-size:.65rem;"></span>
-  </span>
-</div>
-<div class="admin-fs" id="adminFs">
-  <div class="admin-nav">
-    <div style="font-size:1rem;font-weight:800;">Admin Panel &mdash; ShiftOT Pro</div>
-    <div style="margin-left:auto;display:flex;gap:8px;">
-      <button class="btn" onclick="loadAdminPanel()" style="color:var(--green);">Refresh</button>
-      <button class="btn" onclick="document.getElementById('adminFs').className='admin-fs'">Close</button>
-    </div>
-  </div>
-  <div class="admin-body">
-    <div class="admin-kpi-grid" id="adminKpis"></div>
-    <div class="admin-sec">Create New User</div>
-    <div class="add-user-form">
-      <div class="add-user-grid">
-        <div class="afield"><label class="alabel">Email</label><input class="ainput" id="nu_email" type="email" placeholder="user@company.com"></div>
-        <div class="afield"><label class="alabel">Password</label><input class="ainput" id="nu_pwd" type="text" placeholder="password"></div>
-        <div class="afield"><label class="alabel">Company</label><input class="ainput" id="nu_company" placeholder="Company name"></div>
-        <div class="afield"><label class="alabel">Expires</label><input class="ainput" id="nu_expiry" type="date"></div>
-        <button class="asubmit" onclick="adminCreateUser()">Create</button>
-      </div>
-    </div>
-    <div class="admin-sec">All Users</div>
-    <table class="user-tbl"><thead><tr>
-      <th>Email</th><th>Company</th><th>Role</th><th>Expires</th><th>Status</th><th>Actions</th>
-    </tr></thead><tbody id="adminUserBody"></tbody></table>
-    <div class="admin-sec">Current Month Data &mdash; All Users</div>
-    <div id="adminAllData"></div>
-  </div>
-</div>
-</body></html>`;
+  </body></html>`;
 
   const blob=new Blob([html],{type:'text/html'});
   const url=URL.createObjectURL(blob);
@@ -4442,62 +3993,1212 @@ function packAndSend() {
 
   // Embed data as a bootstrap script inside the HTML
   const dataScript = `
+<script id="__packedData__">
+// ── PACKED DATA — DO NOT EDIT ──────────────────────────────────
+(function(){
+  const packedData = ${JSON.stringify(allData)};
+  // Load all packed data into localStorage on first open
+  const marker = '__shiftot_packed_loaded__';
+  if(!localStorage.getItem(marker)){
+    Object.entries(packedData).forEach(([k,v])=>{
+      try{ localStorage.setItem(k, v); }catch(e){}
+    });
+    localStorage.setItem(marker,'1');
+    console.log('ShiftOT Pro: packed data loaded into browser storage.');
+  }
+})();
+<\/script>`;
 
-<div class="login-screen" id="loginScreen" style="display:none;">
-  <div class="login-box">
-    <div class="login-logo">
-      <div class="login-logo-mark">S+</div>
-      <div class="login-logo-text">ShiftOT Pro</div>
+  // Get the current HTML source
+  const originalHtml = document.documentElement.outerHTML;
+
+  // Insert the data script right after <head> opening tag
+  let packedHtml = originalHtml.replace(
+    '<head>',
+    '<head>' + dataScript
+  );
+
+  // Also remove the packed marker check for this copy (so it always loads fresh on new PC)
+  // The marker prevents double-loading on same PC
+
+  // Build the file
+  const blob = new Blob([packedHtml], {type:'text/html;charset=utf-8'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+
+  // Build filename with month context
+  const mn = MONTHS_SHORT[currentMonth-1];
+  a.href     = url;
+  a.download = `ShiftOT_Pro_${currentYear}_${String(currentMonth).padStart(2,'0')}_${mn}_PACKED.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  showToast(`✓ Packed file downloaded — email it to any PC`,'ok');
+  setTimeout(()=>{
+    alert('✅ Packed file saved!\n\n📧 HOW TO USE ON ANOTHER PC:\n1. Email the _PACKED.html file\n2. Recipient opens it in any browser\n3. Data loads automatically on first open\n\n💾 HOW TO KEEP DATA IN FUTURE UPDATES:\nAlways use Pack & Send before opening a new version of ShiftOT Pro.');
+  },500);
+}
+
+// ── MOVE PERIOD TOOL ───────────────────────────────────────────
+function openMoveModal() {
+  closeExport();
+  // Populate year selectors
+  ['moveFromYear','moveToYear'].forEach(id=>{
+    const sel = document.getElementById(id);
+    sel.innerHTML='';
+    for(let y=currentYear-3;y<=currentYear+2;y++){
+      const o=document.createElement('option');
+      o.value=y; o.textContent=y;
+      if(y===currentYear) o.selected=true;
+      sel.appendChild(o);
+    }
+  });
+  // Default: from = current period, to = one month back
+  document.getElementById('moveFromMonth').value = currentMonth;
+  document.getElementById('moveFromYear').value  = currentYear;
+  const toM = currentMonth===1?12:currentMonth-1;
+  const toY = currentMonth===1?currentYear-1:currentYear;
+  document.getElementById('moveToMonth').value = toM;
+  document.getElementById('moveToYear').value  = toY;
+
+  // Dept checkboxes
+  const dc = document.getElementById('moveDeptCheck');
+  dc.innerHTML = DEPTS.map(d=>`
+    <label style="display:flex;align-items:center;gap:5px;padding:5px 10px;
+      background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+      cursor:pointer;font-size:.78rem;font-weight:600;">
+      <input type="checkbox" id="mvd-${d}" value="${d}" checked
+        style="accent-color:var(--accent);width:14px;height:14px;">
+      <span style="color:${DEPT_COLORS[d]}">${d}</span>
+    </label>`).join('');
+
+  // Add change listeners for summary
+  ['moveFromMonth','moveFromYear','moveToMonth','moveToYear'].forEach(id=>{
+    document.getElementById(id).addEventListener('change', updateMoveSummary);
+  });
+  dc.querySelectorAll('input').forEach(el=>el.addEventListener('change', updateMoveSummary));
+
+  updateMoveSummary();
+  document.getElementById('moveOverlay').className='overlay open';
+}
+
+function closeMoveModal() {
+  document.getElementById('moveOverlay').className='overlay';
+}
+
+function updateMoveSummary() {
+  const fromM = +document.getElementById('moveFromMonth').value;
+  const fromY = +document.getElementById('moveFromYear').value;
+  const toM   = +document.getElementById('moveToMonth').value;
+  const toY   = +document.getElementById('moveToYear').value;
+  const sel   = getSelectedMoveDepts();
+  const el    = document.getElementById('moveSummary');
+
+  if(fromM===toM && fromY===toY){
+    el.innerHTML='<span style="color:var(--red)">⚠ Source and destination are the same period</span>';
+    return;
+  }
+
+  let count=0;
+  sel.forEach(d=>{
+    const key=`sot3_${d}_${fromY}_${String(fromM).padStart(2,'0')}`;
+    try{ const r=localStorage.getItem(key); if(r){ const sheets=JSON.parse(r); count+=sheets.length; } }catch(e){}
+  });
+
+  const mNames=['','January','February','March','April','May','June','July','August','September','October','November','December'];
+  if(count===0){
+    el.innerHTML=`<span style="color:var(--text3)">No data found in ${mNames[fromM]} ${fromY} for selected departments</span>`;
+  } else {
+    el.innerHTML=`<span style="color:var(--green)">✓ Found <strong>${count} sheet(s)</strong> in ${mNames[fromM]} ${fromY} → will move to <strong>${mNames[toM]} ${toY}</strong></span>`;
+  }
+}
+
+function getSelectedMoveDepts() {
+  return DEPTS.filter(d=>{ const el=document.getElementById('mvd-'+d); return el&&el.checked; });
+}
+
+function executeMove() {
+  const fromM = +document.getElementById('moveFromMonth').value;
+  const fromY = +document.getElementById('moveFromYear').value;
+  const toM   = +document.getElementById('moveToMonth').value;
+  const toY   = +document.getElementById('moveToYear').value;
+  const sel   = getSelectedMoveDepts();
+
+  if(fromM===toM && fromY===toY){
+    showToast('Source and destination are the same','err'); return;
+  }
+  if(sel.length===0){ showToast('Select at least one department','err'); return; }
+
+  let moved=0;
+  sel.forEach(d=>{
+    const fromKey = `sot3_${d}_${fromY}_${String(fromM).padStart(2,'0')}`;
+    const toKey   = `sot3_${d}_${toY}_${String(toM).padStart(2,'0')}`;
+    try{
+      const fromRaw = localStorage.getItem(fromKey);
+      if(!fromRaw) return;
+      const fromSheets = JSON.parse(fromRaw);
+      if(fromSheets.length===0) return;
+
+      // Load destination sheets and merge
+      let toSheets=[];
+      try{ const tr=localStorage.getItem(toKey); if(tr) toSheets=JSON.parse(tr); }catch(e){}
+
+      // Give moved sheets new IDs to avoid conflicts
+      fromSheets.forEach(s=>{
+        s.id=++sheetCtr;
+        (s.entries||[]).forEach(e=>e.id=++entryCtr);
+        toSheets.push(s);
+      });
+
+      localStorage.setItem(toKey, JSON.stringify(toSheets));
+      localStorage.removeItem(fromKey);
+      moved+=fromSheets.length;
+    }catch(e){ console.error('Move error:',e); }
+  });
+
+  closeMoveModal();
+
+  if(moved===0){
+    showToast('No data found to move','warn'); return;
+  }
+
+  showToast(`✓ Moved ${moved} sheet(s) successfully`,'ok');
+
+  // If we moved to current period, reload
+  if(toM===currentMonth && toY===currentYear){ loadAll(); renderAll(); }
+  // If we moved from current period, reload
+  if(fromM===currentMonth && fromY===currentYear){ loadAll(); renderAll(); }
+}
+
+// ── EXPORT ─────────────────────────────────────────────────────
+function openExport(mode) {
+  const scopes=[{k:'current',l:'Current Sheet'},{k:'dept',l:currentDept+' Dept'},{k:'month',l:'Whole Month'}];
+  document.getElementById('scopeRow').innerHTML=scopes.map(s=>
+    `<button class="scope-btn${expScope===s.k?' active':''}" onclick="setScope('${s.k}')">${s.l}</button>`
+  ).join('');
+  document.getElementById('exportOverlay').className='overlay open';
+  if(mode==='pdf') setTimeout(doPDF,300);
+}
+function closeExport(){ document.getElementById('exportOverlay').className='overlay'; }
+function setScope(s){ expScope=s; openExport(); }
+
+function getDataForExport() {
+  if(expScope==='current'){
+    const s=activeSheet(); return s?{[currentDept]:[s]}:{};
+  }
+  if(expScope==='dept') return {[currentDept]: sheets[currentDept]||[]};
+  const out={};
+  DEPTS.forEach(d=>{ if(sheets[d]&&sheets[d].length) out[d]=sheets[d]; });
+  return out;
+}
+
+function breakdownText(r) {
+  if(r.isHoliday) return `Special OT ${fmtM(r.segments[0].from)}-${fmtM(r.segments[0].to)} (${r.totalSOTHours}h)`;
+  return r.segments.map(g=>
+    g.type==='shift'?`Shift${g.name} ${fmtM(g.from)}-${fmtM(g.to)}`
+    :g.type==='ot'?`OT ${fmtM(g.from)}-${fmtM(g.to)} ${fmtDur(g.mins)}`
+    :`${fmtM(g.from)}-${fmtM(g.to)} ${fmtDur(g.mins)}`
+  ).join(' | ');
+}
+
+// ── PDF ────────────────────────────────────────────────────────
+function doPDF() {
+  closeExport();
+  const data=getDataForExport();
+  const scopeLabel=expScope==='current'?(activeSheet()?.name||'Sheet'):expScope==='dept'?currentDept:'All Departments';
+  const deptColor=DEPT_COLORS[currentDept]||'#2563eb';
+
+  let html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>ShiftOT Report — ${MONTHS[currentMonth-1]} ${currentYear}</title>
+  <style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#1a1f36;background:#fff;}
+  @page{size:A4;margin:12mm 12mm 14mm 12mm;}
+  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+
+  .page-hdr{margin-bottom:3mm;}
+  .hdr-bar{background:#1e3a8a;color:#fff;padding:3.5mm 5mm;display:flex;justify-content:space-between;align-items:center;border-radius:2mm 2mm 0 0;}
+  .hdr-app{font-size:12pt;font-weight:800;letter-spacing:-.02em;}
+  .hdr-app span{color:#93c5fd;}
+  .hdr-gen{font-size:7.5pt;color:#93c5fd;}
+  .hdr-meta{display:flex;justify-content:space-between;align-items:flex-end;padding:3mm 1mm 2mm;}
+  .hdr-period{font-size:20pt;font-weight:800;color:#1e3a8a;letter-spacing:-.03em;line-height:1;}
+  .hdr-period small{font-size:9pt;font-weight:500;color:#64748b;}
+  .hdr-scope{font-size:8.5pt;color:#64748b;margin-top:2mm;}
+  .divider{border:none;border-top:2px solid #e2e8f0;margin:0 0 4mm;}
+
+  .dept-section{margin-bottom:7mm;page-break-inside:avoid;}
+  .dept-hdr{display:flex;justify-content:space-between;align-items:stretch;border-radius:2mm;overflow:hidden;margin-bottom:2mm;border:1.5px solid;}
+  .dh-left{padding:3mm 4mm;}
+  .dh-dept{font-size:12pt;font-weight:800;}
+  .dh-worker{font-size:8.5pt;color:#475569;margin-top:1mm;}
+  .dh-holiday{display:inline-flex;align-items:center;gap:3px;font-size:7.5pt;font-weight:700;background:#f59e0b;color:#fff;padding:1px 6px;border-radius:3px;margin-top:2mm;}
+  .dh-right{padding:3mm 5mm;text-align:right;display:flex;flex-direction:column;justify-content:center;}
+  .dh-date{font-size:11pt;font-weight:700;color:#1e293b;}
+  .dh-period{font-size:8pt;color:#64748b;margin-top:1mm;}
+
+  table{width:100%;border-collapse:collapse;margin-bottom:0;font-size:8.5pt;}
+  thead th{padding:2.5mm 3mm;font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#fff;text-align:left;}
+  thead th.c{text-align:center;}
+  tbody tr:nth-child(even){background:#f8fafc;}
+  tbody td{padding:2.5mm 3mm;border-bottom:1px solid #e2e8f0;color:#1e293b;vertical-align:middle;}
+  tbody td.c{text-align:center;}
+  tbody td.mono{font-family:'Consolas',monospace;font-weight:700;}
+  tbody td.muted{color:#64748b;}
+  tbody tr.hol-row{background:#fffbeb!important;}
+  tr.sub td{background:#eff6ff!important;font-weight:700;border-top:2px solid #bfdbfe;}
+  tr.sub td.shifts{color:#1d4ed8;text-align:center;}
+  tr.sub td.ot15{color:#065f46;text-align:center;}
+  tr.sub td.ot25{color:#92400e;text-align:center;}
+  tr.sub td.total{color:#164e63;text-align:center;}
+
+  .sum-bar{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:2.5mm;margin-top:2mm;}
+  .sum-box{padding:2.5mm 3mm;border-radius:2mm;text-align:center;border:1.5px solid;}
+  .sum-lbl{font-size:6.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:1mm;}
+  .sum-val{font-size:14pt;font-weight:800;line-height:1;}
+
+  .grand-section{margin-top:6mm;page-break-inside:avoid;}
+  .grand-title{font-size:10pt;font-weight:800;color:#1e3a8a;border-bottom:2px solid #1e3a8a;padding-bottom:2mm;margin-bottom:4mm;text-transform:uppercase;letter-spacing:.04em;}
+
+  /* Dept summary table */
+  .dept-summary-table{width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:4mm;}
+  .dst th{background:#1e3a8a;color:#fff;padding:2.5mm 3mm;font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.07em;text-align:left;}
+  .dst th.c{text-align:center;}
+  .dst td{padding:2.5mm 3mm;border-bottom:1px solid #e2e8f0;}
+  .dst td.c{text-align:center;font-weight:700;}
+  .dst tr.grand td{background:#eff6ff;font-weight:800;border-top:2px solid #1e3a8a;}
+
+  /* Company summary table */
+  .company-section{margin-top:5mm;}
+  .company-title{font-size:10pt;font-weight:800;color:#065f46;border-bottom:2px solid #065f46;padding-bottom:2mm;margin-bottom:4mm;text-transform:uppercase;letter-spacing:.04em;}
+
+  .footer-note{margin-top:5mm;text-align:center;font-size:7pt;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:3mm;}
+  </style></head><body>`;
+
+  // Page header
+  html+=`<div class="page-hdr">
+    <div class="hdr-bar">
+      <div class="hdr-app">Shift<span>OT</span> Pro — Attendance Report</div>
+      <div class="hdr-gen">Generated: ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}</div>
     </div>
-    <div class="login-subtitle">Cloud Edition</div>
-    <div class="login-field">
-      <label class="login-label">Email</label>
-      <input class="login-input" type="email" id="loginEmail" placeholder="you@company.com" autocomplete="email">
-    </div>
-    <div class="login-field">
-      <label class="login-label">Password</label>
-      <input class="login-input" type="password" id="loginPwd" placeholder="password" autocomplete="current-password">
-    </div>
-    <button class="login-btn" id="loginBtn" onclick="doLogin()">Sign In</button>
-    <div class="login-err" id="loginErr"></div>
-    <div class="login-footer">&copy; 2026 ShiftOT Pro &mdash; Contact admin for access</div>
-  </div>
-</div>
-<div class="cloud-bar" id="cloudBar" style="display:none;">
-  <div class="cloud-dot" id="cloudDot"></div>
-  <span id="cloudMsg">Connected</span>
-  <span style="margin-left:auto;display:flex;gap:8px;align-items:center;">
-    <span id="cloudUser" style="font-weight:600;font-size:.68rem;"></span>
-    <span id="cloudRole" style="opacity:.6;font-size:.65rem;"></span>
-  </span>
-</div>
-<div class="admin-fs" id="adminFs">
-  <div class="admin-nav">
-    <div style="font-size:1rem;font-weight:800;">Admin Panel &mdash; ShiftOT Pro</div>
-    <div style="margin-left:auto;display:flex;gap:8px;">
-      <button class="btn" onclick="loadAdminPanel()" style="color:var(--green);">Refresh</button>
-      <button class="btn" onclick="document.getElementById('adminFs').className='admin-fs'">Close</button>
-    </div>
-  </div>
-  <div class="admin-body">
-    <div class="admin-kpi-grid" id="adminKpis"></div>
-    <div class="admin-sec">Create New User</div>
-    <div class="add-user-form">
-      <div class="add-user-grid">
-        <div class="afield"><label class="alabel">Email</label><input class="ainput" id="nu_email" type="email" placeholder="user@company.com"></div>
-        <div class="afield"><label class="alabel">Password</label><input class="ainput" id="nu_pwd" type="text" placeholder="password"></div>
-        <div class="afield"><label class="alabel">Company</label><input class="ainput" id="nu_company" placeholder="Company name"></div>
-        <div class="afield"><label class="alabel">Expires</label><input class="ainput" id="nu_expiry" type="date"></div>
-        <button class="asubmit" onclick="adminCreateUser()">Create</button>
+    <div class="hdr-meta">
+      <div>
+        <div class="hdr-period">${MONTHS[currentMonth-1]} ${currentYear} <small>/ ${currentYear}</small></div>
+        <div class="hdr-scope">${scopeLabel}</div>
       </div>
     </div>
-    <div class="admin-sec">All Users</div>
-    <table class="user-tbl"><thead><tr>
-      <th>Email</th><th>Company</th><th>Role</th><th>Expires</th><th>Status</th><th>Actions</th>
-    </tr></thead><tbody id="adminUserBody"></tbody></table>
-    <div class="admin-sec">Current Month Data &mdash; All Users</div>
-    <div id="adminAllData"></div>
-  </div>
-</div>
+    <hr class="divider">
+  </div>`;
+
+  // Track for summaries
+  let grandS=0,grandOT=0,grandSOT=0,grandH=0;
+  const deptSummary={};
+  const compSummary={};
+  DEPTS.forEach(d=>{deptSummary[d]={shifts:0,ot:0,sot:0,total:0};});
+  MP_COMPANIES.forEach(m=>{compSummary[m]={shifts:0,ot:0,sot:0,total:0};});
+
+  Object.entries(data).forEach(([dept,sheetList])=>{
+    const dc=DEPT_COLORS[dept]||'#2563eb';
+    const rgb=hexToRgb(dc);
+    const tintR=Math.round(rgb.r*.1+255*.9),tintG=Math.round(rgb.g*.1+255*.9),tintB=Math.round(rgb.b*.1+255*.9);
+    const tint=`rgb(${tintR},${tintG},${tintB})`;
+    const dark=`rgb(${Math.round(rgb.r*.55)},${Math.round(rgb.g*.55)},${Math.round(rgb.b*.55)})`;
+
+    sheetList.forEach(sheet=>{
+      if(sheet.entries.length===0) return;
+      const holLabel=sheet.isHoliday?`<div class="dh-holiday">🌟 Special Holiday — 2.5× OT</div>`:'';
+      const dateObj=sheet.date?new Date(sheet.date):null;
+      const dateMain=dateObj?dateObj.toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}):sheet.date||'';
+      const dateSub=dateObj?dateObj.toLocaleDateString('en-GB',{weekday:'long'})+` · ${MONTHS[currentMonth-1]} ${currentYear}`:`${MONTHS[currentMonth-1]} ${currentYear}`;
+
+      html+=`<div class="dept-section">
+        <div class="dept-hdr" style="border-color:${dc};background:${tint};">
+          <div class="dh-left" style="border-left:4px solid ${dc};">
+            <div class="dh-dept" style="color:${dark};">${dept}</div>
+            ${sheet.name?`<div class="dh-worker">📋 ${sheet.name}</div>`:''}
+            ${holLabel}
+          </div>
+          <div class="dh-right" style="background:${tint};">
+            <div class="dh-date">${dateMain}</div>
+            <div class="dh-period">${dateSub}</div>
+          </div>
+        </div>`;
+
+      // Table
+      html+=`<table>
+        <thead style="background:${dc};">
+          <tr>
+            <th style="width:6%;">#</th>
+            <th style="width:14%;">Employee</th>
+            <th style="width:14%;">In → Out</th>
+            <th style="width:10%;">Company</th>
+            <th>Breakdown</th>
+            <th class="c" style="width:9%;">Shifts</th>
+            <th class="c" style="width:9%;">OT 1.5h</th>
+            <th class="c" style="width:9%;">★ OT 2.5h</th>
+            <th class="c" style="width:9%;">Total h</th>
+          </tr>
+        </thead><tbody>`;
+
+      let ss=0,sot2=0,sot25=0,sh2=0;
+      sheet.entries.forEach((e,i)=>{
+        const r=e.result;
+        const inS=e.rawIn.slice(0,2)+':'+e.rawIn.slice(2);
+        const outS=e.rawOut.slice(0,2)+':'+e.rawOut.slice(2);
+        const nd=e.isNextDay?' +1d':'';
+        const bd=breakdownText(r);
+        const mp=e.mp||'Mathaa';
+        let shV='-',otV='-',sotV='-';
+        let shN=0,otN=0,sotN=0;
+        if(r.isHoliday){sotV=String(r.totalSOTHours);sotN=r.totalSOTHours;}
+        else if(r.fractional){shV=r.fractionalShift.toFixed(1)+'h';shN=r.fractionalShift;}
+        else{shV=String(r.shiftCount);shN=r.shiftCount;otV=fmt1(r.totalOTMins/60);otN=r.totalOTMins/60;}
+        const th=entryTotalH(r);
+        ss+=shN;sot2+=otN;sot25+=sotN;sh2+=th;
+        deptSummary[dept].shifts+=shN;deptSummary[dept].ot+=otN;
+        deptSummary[dept].sot+=sotN;deptSummary[dept].total+=th;
+        if(compSummary[mp]){compSummary[mp].shifts+=shN;compSummary[mp].ot+=otN;compSummary[mp].sot+=sotN;compSummary[mp].total+=th;}
+        grandS+=shN;grandOT+=otN;grandSOT+=sotN;grandH+=th;
+        html+=`<tr${sheet.isHoliday?' class="hol-row"':''}>
+          <td class="muted">${i+1}</td>
+          <td>${e.empName||'—'}</td>
+          <td class="mono">${inS} → ${outS}${nd}</td>
+          <td>${mp}</td>
+          <td style="font-size:7.5pt;color:#475569;">${bd}</td>
+          <td class="c" style="font-weight:800;color:#1d4ed8;">${shV}</td>
+          <td class="c" style="font-weight:800;color:#065f46;">${otV}</td>
+          <td class="c" style="font-weight:800;color:#92400e;">${sotV}</td>
+          <td class="c" style="font-weight:800;color:#164e63;">${fmt1(th)}</td>
+        </tr>`;
+      });
+
+      const hasFrac=sheet.entries.some(e=>e.result.fractional);
+      html+=`<tr class="sub">
+        <td colspan="5" style="color:#1e3a8a;font-size:8pt;text-transform:uppercase;letter-spacing:.05em;">Sheet Total</td>
+        <td class="shifts">${hasFrac?fmt1(ss)+'h':fmt1(ss)}</td>
+        <td class="ot15">${fmt1(sot2)}</td>
+        <td class="ot25">${fmt1(sot25)}</td>
+        <td class="total">${fmt1(sh2)}</td>
+      </tr></tbody></table>`;
+
+      // Summary boxes
+      html+=`<div class="sum-bar">
+        <div class="sum-box" style="background:#eff6ff;border-color:#bfdbfe;">
+          <div class="sum-lbl" style="color:#1d4ed8;">Shifts</div>
+          <div class="sum-val" style="color:#1d4ed8;">${hasFrac?fmt1(ss)+'h':fmt1(ss)}</div>
+        </div>
+        <div class="sum-box" style="background:#ecfdf5;border-color:#a7f3d0;">
+          <div class="sum-lbl" style="color:#065f46;">Normal OT 1.5h</div>
+          <div class="sum-val" style="color:#065f46;">${fmt1(sot2)}</div>
+        </div>
+        <div class="sum-box" style="background:#fffbeb;border-color:#fde68a;">
+          <div class="sum-lbl" style="color:#92400e;">★ Special OT 2.5h</div>
+          <div class="sum-val" style="color:#92400e;">${fmt1(sot25)}</div>
+        </div>
+        <div class="sum-box" style="background:#ecfeff;border-color:#a5f3fc;">
+          <div class="sum-lbl" style="color:#164e63;">Total Hours</div>
+          <div class="sum-val" style="color:#164e63;">${fmt1(sh2)}</div>
+        </div>
+      </div></div>`;
+    });
+  });
+
+  // ── Grand summary (month scope) ──────────────────────────────
+  if(expScope==='month') {
+    html+=`<div class="grand-section">
+      <div class="grand-title">▶ Department-wise Monthly Summary</div>
+      <table class="dept-summary-table dst">
+        <thead><tr>
+          <th>Department</th>
+          <th class="c">Shifts</th>
+          <th class="c">Normal OT 1.5h</th>
+          <th class="c">★ Special OT 2.5h</th>
+          <th class="c">Total Hours</th>
+        </tr></thead><tbody>`;
+    DEPTS.forEach(d=>{
+      const ds=deptSummary[d];
+      const c=DEPT_COLORS[d];
+      html+=`<tr>
+        <td style="font-weight:700;color:${c};">● ${d}</td>
+        <td class="c" style="color:#1d4ed8;">${fmt1(ds.shifts)}</td>
+        <td class="c" style="color:#065f46;">${fmt1(ds.ot)}</td>
+        <td class="c" style="color:#92400e;">${fmt1(ds.sot)}</td>
+        <td class="c" style="color:#164e63;">${fmt1(ds.total)}</td>
+      </tr>`;
+    });
+    html+=`<tr class="grand">
+      <td style="color:#1e3a8a;text-transform:uppercase;font-size:8.5pt;letter-spacing:.05em;">MONTH TOTAL</td>
+      <td class="c" style="color:#1d4ed8;font-size:12pt;">${fmt1(grandS)}</td>
+      <td class="c" style="color:#065f46;font-size:12pt;">${fmt1(grandOT)}</td>
+      <td class="c" style="color:#92400e;font-size:12pt;">${fmt1(grandSOT)}</td>
+      <td class="c" style="color:#164e63;font-size:12pt;">${fmt1(grandH)}</td>
+    </tr></tbody></table>`;
+
+    // Manpower company summary
+    html+=`<div class="company-section">
+      <div class="company-title">▶ Manpower Company-wise Summary</div>
+      <table class="dept-summary-table dst">
+        <thead><tr>
+          <th>Company</th>
+          <th class="c">Shifts</th>
+          <th class="c">Normal OT 1.5h</th>
+          <th class="c">★ Special OT 2.5h</th>
+          <th class="c">Total Hours</th>
+        </tr></thead><tbody>`;
+    MP_COMPANIES.forEach(m=>{
+      const cs=compSummary[m];
+      html+=`<tr>
+        <td style="font-weight:700;">${m}</td>
+        <td class="c" style="color:#1d4ed8;">${fmt1(cs.shifts)}</td>
+        <td class="c" style="color:#065f46;">${fmt1(cs.ot)}</td>
+        <td class="c" style="color:#92400e;">${fmt1(cs.sot)}</td>
+        <td class="c" style="color:#164e63;">${fmt1(cs.total)}</td>
+      </tr>`;
+    });
+    html+=`</tbody></table></div>`;
+  }
+
+  html+=`<div class="footer-note">ShiftOT Pro · ${MONTHS[currentMonth-1]} ${currentYear} · ${scopeLabel} · ${new Date().toLocaleString()}</div>
+  </body></html>`;
+
+  // Use Blob URL to avoid blank first page in Chrome/Edge
+  const blob = new Blob([html], {type:'text/html'});
+  const url  = URL.createObjectURL(blob);
+  const win  = window.open(url,'_blank');
+  if(win){
+    win.onload = ()=>{ setTimeout(()=>{ win.print(); URL.revokeObjectURL(url); },400); };
+  }
+  showToast('PDF window opened — select "Save as PDF" in print dialog','ok');
+}
+
+function hexToRgb(hex){
+  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return{r,g,b};
+}
+
+// ── CSV ────────────────────────────────────────────────────────
+function doCSV() {
+  closeExport();
+  const data=getDataForExport();
+  let csv='Dept,Date,Holiday,Sheet Label,Employee,In,Out,Next Day,Manpower,Breakdown,Shifts,OT 1.5h,OT 2.5h,Total h\r\n';
+  let grandS=0,grandOT=0,grandSOT=0,grandH=0;
+  const deptSum={};DEPTS.forEach(d=>{deptSum[d]={s:0,ot:0,sot:0,h:0};});
+  const compSum={};MP_COMPANIES.forEach(m=>{compSum[m]={s:0,ot:0,sot:0,h:0};});
+
+  Object.entries(data).forEach(([dept,list])=>{
+    list.forEach(sheet=>{
+      sheet.entries.forEach((e,i)=>{
+        const r=e.result;
+        const inS=e.rawIn.slice(0,2)+':'+e.rawIn.slice(2);
+        const outS=e.rawOut.slice(0,2)+':'+e.rawOut.slice(2);
+        const mp=e.mp||'Mathaa';
+        let shV='-',otV='-',sotV='-';
+        let shN=0,otN=0,sotN=0;
+        if(r.isHoliday){sotV=String(r.totalSOTHours);sotN=r.totalSOTHours;}
+        else if(r.fractional){shV=r.fractionalShift.toFixed(1);shN=r.fractionalShift;}
+        else{shV=String(r.shiftCount);shN=r.shiftCount;otV=fmt1(r.totalOTMins/60);otN=r.totalOTMins/60;}
+        const th=entryTotalH(r);
+        deptSum[dept].s+=shN;deptSum[dept].ot+=otN;deptSum[dept].sot+=sotN;deptSum[dept].h+=th;
+        if(compSum[mp]){compSum[mp].s+=shN;compSum[mp].ot+=otN;compSum[mp].sot+=sotN;compSum[mp].h+=th;}
+        grandS+=shN;grandOT+=otN;grandSOT+=sotN;grandH+=th;
+        csv+=`"${dept}","${sheet.date||''}","${sheet.isHoliday?'YES':''}","${sheet.name||''}","${e.empName||''}","${inS}","${outS}","${e.isNextDay?'Yes':'No'}","${mp}","${breakdownText(r)}","${shV}","${otV}","${sotV}","${fmt1(th)}"\r\n`;
+      });
+      let ss=0,sot=0,sot2=0,sh2=0;
+      sheet.entries.forEach(e=>{
+        if(e.result.isHoliday)sot2+=e.result.totalSOTHours;
+        else if(e.result.fractional)ss+=e.result.fractionalShift;
+        else{ss+=e.result.shiftCount;sot+=e.result.totalOTMins/60;}
+        sh2+=entryTotalH(e.result);
+      });
+      if(sheet.entries.length>0)
+        csv+=`"${dept}","${sheet.date||''}","","SHEET TOTAL","","","","","","","${fmt1(ss)}","${fmt1(sot)}","${fmt1(sot2)}","${fmt1(sh2)}"\r\n\r\n`;
+    });
+  });
+
+  // Dept summary
+  csv+=`\r\nDEPARTMENT SUMMARY\r\n`;
+  csv+=`Dept,Shifts,OT 1.5h,Special OT 2.5h,Total h\r\n`;
+  DEPTS.forEach(d=>{const x=deptSum[d];csv+=`"${d}","${fmt1(x.s)}","${fmt1(x.ot)}","${fmt1(x.sot)}","${fmt1(x.h)}"\r\n`;});
+  csv+=`"TOTAL","${fmt1(grandS)}","${fmt1(grandOT)}","${fmt1(grandSOT)}","${fmt1(grandH)}"\r\n`;
+  csv+=`\r\nMANPOWER COMPANY SUMMARY\r\n`;
+  csv+=`Company,Shifts,OT 1.5h,Special OT 2.5h,Total h\r\n`;
+  MP_COMPANIES.forEach(m=>{const x=compSum[m];csv+=`"${m}","${fmt1(x.s)}","${fmt1(x.ot)}","${fmt1(x.sot)}","${fmt1(x.h)}"\r\n`;});
+
+  dl(csv,'text/csv',`ShiftOT_${currentYear}-${String(currentMonth).padStart(2,'0')}_${expScope}.csv`);
+  showToast('CSV downloaded ✓','ok');
+}
+
+// ── JSON BACKUP ────────────────────────────────────────────────
+function doJSON() {
+  closeExport();
+  const payload={version:3,exportedAt:new Date().toISOString(),month:currentMonth,year:currentYear,sheets};
+  dl(JSON.stringify(payload,null,2),'application/json',`ShiftOT_backup_${currentYear}-${String(currentMonth).padStart(2,'0')}.json`);
+  showToast('Backup saved ✓','ok');
+}
+
+function doImport(evt) {
+  const file=evt.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const d=JSON.parse(e.target.result);
+      if(!d.sheets) throw new Error('bad');
+      Object.entries(d.sheets).forEach(([dept,list])=>{
+        if(!sheets[dept]) sheets[dept]=[];
+        list.forEach(s=>{
+          s.id=++sheetCtr;
+          (s.entries||[]).forEach(en=>en.id=++entryCtr);
+          sheets[dept].push(s);
+        });
+      });
+      DEPTS.forEach(d=>{if(!activeIds[d]&&sheets[d]&&sheets[d].length>0)activeIds[d]=sheets[d][0].id;});
+      DEPTS.forEach(d=>saveDept(d));
+      renderAll(); closeExport(); showToast('Imported successfully ✓','ok');
+    }catch{showToast('Invalid backup file','err');}
+  };
+  reader.readAsText(file); evt.target.value='';
+}
+
+function dl(content,type,name){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([content],{type}));
+  a.download=name; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ── CONFIRM ────────────────────────────────────────────────────
+function showConfirm(title, msg, onOk, okLabel) {
+  document.getElementById('confirmTitle').textContent=title;
+  document.getElementById('confirmMsg').textContent=msg;
+  document.getElementById('confirmOk').textContent=okLabel||'OK';
+  document.getElementById('confirmOk').onclick=()=>{closeConfirm();onOk();};
+  document.getElementById('confirmOverlay').className='overlay open';
+}
+function closeConfirm(){ document.getElementById('confirmOverlay').className='overlay'; }
+
+// ── TOAST ──────────────────────────────────────────────────────
+let _tt=null;
+function showToast(msg,type='') {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast show'+(type?' '+type:'');
+  if(_tt) clearTimeout(_tt);
+  _tt=setTimeout(()=>t.className='toast',3000);
+}
+
+
+
+// ── THEME ──────────────────────────────────────────────────────
+function setTheme(mode) {
+  // mode: 'light' | 'dark'
+  document.documentElement.setAttribute('data-theme', mode === 'dark' ? 'dark' : '');
+  localStorage.setItem('sot3_theme', mode);
+  document.getElementById('themeLight').className = 'theme-option' + (mode === 'light' ? ' active' : '');
+  document.getElementById('themeDark').className  = 'theme-option' + (mode === 'dark'  ? ' active' : '');
+}
+
+function loadTheme() {
+  const saved = localStorage.getItem('sot3_theme') || 'light';
+  setTheme(saved);
+}
+
+// ── EMPLOYEE REGISTRY ─────────────────────────────────────────
+const EMP_STORAGE_KEY = 'sot3_employees';
+
+function getEmployees() {
+  try { const r=localStorage.getItem(EMP_STORAGE_KEY); return r?JSON.parse(r):[]; }
+  catch(e) { return []; }
+}
+
+function saveEmployee(name) {
+  if(!name || name.trim().length < 2) return;
+  name = name.trim().replace(/\s+/g,' '); // normalise multiple spaces
+  const list = getEmployees();
+
+  // Case-insensitive + whitespace-normalised duplicate check
+  const existingIdx = list.findIndex(n => n.toLowerCase().replace(/\s+/g,' ') === name.toLowerCase());
+
+  if(existingIdx === -1) {
+    // Brand new name — add to top
+    list.unshift(name);
+    if(list.length > 200) list.pop();
+  } else {
+    // Already exists — move existing entry to top (keep original casing)
+    const existing = list.splice(existingIdx, 1)[0];
+    list.unshift(existing);
+  }
+
+  try { localStorage.setItem(EMP_STORAGE_KEY, JSON.stringify(list)); } catch(e) {}
+}
+
+// Clean up any duplicates already in storage (case-insensitive)
+function dedupeEmployees() {
+  const raw = getEmployees();
+  const seen = new Set();
+  // Trim whitespace, skip empty, dedupe case-insensitively, keep first occurrence
+  const clean = raw
+    .map(n => String(n).trim())
+    .filter(n => {
+      if(n.length < 1) return false;
+      const key = n.toLowerCase().replace(/\s+/g,' ');
+      if(seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  // Always save cleaned list
+  try { localStorage.setItem(EMP_STORAGE_KEY, JSON.stringify(clean)); } catch(e) {}
+}
+
+function setupEmpAutocomplete() {
+  const inp = document.getElementById('empName');
+  const dd  = document.getElementById('empDropdown');
+  let focusedIdx   = -1;
+  let currentMatches = [];
+
+  // ── Focus highlight ──────────────────────────────────────────
+  function setFocus(idx) {
+    focusedIdx = idx;
+    dd.querySelectorAll('.emp-opt').forEach((o,i) => {
+      o.className = 'emp-opt' + (i===focusedIdx ? ' focused' : '');
+    });
+    const focused = dd.querySelector('.emp-opt.focused');
+    if(focused) focused.scrollIntoView({block:'nearest'});
+  }
+
+  // ── Build and show dropdown ──────────────────────────────────
+  function showDropdown(query) {
+    const raw = getEmployees();
+    // Dedupe
+    const seen = new Set();
+    const all = raw.filter(n => {
+      const k = n.trim().toLowerCase().replace(/\s+/g,' ');
+      if(!k || seen.has(k)) return false;
+      seen.add(k); return true;
+    });
+
+    const q = query.trim().toLowerCase();
+
+    if(q.length === 0) {
+      // No query → show ALL saved names
+      currentMatches = all;
+    } else {
+      // Priority order:
+      // 1. Starts with query
+      // 2. Contains query elsewhere
+      const startsWith = all.filter(n => n.toLowerCase().startsWith(q));
+      const contains   = all.filter(n => !n.toLowerCase().startsWith(q) && n.toLowerCase().includes(q));
+      currentMatches   = [...startsWith, ...contains];
+    }
+
+    if(!currentMatches.length) {
+      dd.innerHTML = '';
+      dd.className = 'emp-dropdown';
+      inp.className = 'emp-input';
+      focusedIdx = -1;
+      return;
+    }
+
+    // Header
+    const headerText = q.length === 0
+      ? `${currentMatches.length} saved name${currentMatches.length!==1?'s':''}`
+      : `${currentMatches.length} match${currentMatches.length!==1?'es':''} for "${q}"`;
+
+    // Render options
+    const optionsHtml = currentMatches.map((n, i) => {
+      let display = n;
+      if(q) {
+        const si = n.toLowerCase().indexOf(q);
+        if(si >= 0)
+          display = n.slice(0,si)
+            + '<b>' + n.slice(si, si+q.length) + '</b>'
+            + n.slice(si+q.length);
+      }
+      return `<div class="emp-opt" data-name="${n}" data-idx="${i}">
+        <span class="opt-icon">👤</span>
+        <span class="opt-name">${display}</span>
+        <span class="opt-hint">Enter ↵</span>
+      </div>`;
+    }).join('');
+
+    dd.innerHTML = `<div class="emp-dd-header">${headerText}</div>` + optionsHtml;
+    dd.className = 'emp-dropdown open';
+    inp.className = 'emp-input open';
+
+    // Auto-focus single match
+    focusedIdx = currentMatches.length === 1 ? 0 : -1;
+    if(focusedIdx === 0) {
+      const first = dd.querySelector('.emp-opt');
+      if(first) first.className = 'emp-opt focused';
+    }
+
+    // Mouse click handler
+    dd.querySelectorAll('.emp-opt').forEach(el => {
+      el.addEventListener('mousedown', function(ev) {
+        ev.preventDefault();
+        selectEmployee(this.dataset.name);
+      });
+    });
+  }
+
+  function hideDropdown() {
+    dd.className = 'emp-dropdown';
+    inp.className = 'emp-input';
+    focusedIdx = -1;
+    currentMatches = [];
+  }
+
+  function selectEmployee(name) {
+    inp.value = name;
+    hideDropdown();
+    setTimeout(focusInTime, 40);
+  }
+
+  // ── Events ───────────────────────────────────────────────────
+  inp.addEventListener('click', function() {
+    // Clicking box always shows full list (or filtered if text exists)
+    showDropdown(this.value);
+    // Select all text for easy overtype
+    this.select();
+  });
+
+  inp.addEventListener('focus', function() {
+    showDropdown(this.value);
+    this.select();
+  });
+
+  inp.addEventListener('input', function() {
+    showDropdown(this.value);
+  });
+
+  inp.addEventListener('blur', function() {
+    setTimeout(hideDropdown, 180);
+  });
+
+  inp.addEventListener('keydown', function(e) {
+    const opts = dd.querySelectorAll('.emp-opt');
+    const ddOpen = dd.classList.contains('open');
+
+    if(e.key === 'ArrowDown') {
+      e.preventDefault();
+      if(!ddOpen){ showDropdown(inp.value); return; }
+      setFocus(Math.min(focusedIdx + 1, opts.length - 1));
+
+    } else if(e.key === 'ArrowUp') {
+      e.preventDefault();
+      if(focusedIdx <= 0){ setFocus(-1); }
+      else { setFocus(focusedIdx - 1); }
+
+    } else if(e.key === 'Enter') {
+      e.preventDefault();
+      if(ddOpen && focusedIdx >= 0 && opts[focusedIdx]) {
+        selectEmployee(opts[focusedIdx].dataset.name);
+      } else if(ddOpen && currentMatches.length === 1) {
+        selectEmployee(currentMatches[0]);
+      } else {
+        hideDropdown();
+        focusInTime();
+      }
+
+    } else if(e.key === 'Tab') {
+      e.preventDefault();
+      if(ddOpen && focusedIdx >= 0 && opts[focusedIdx]) {
+        selectEmployee(opts[focusedIdx].dataset.name);
+      } else if(ddOpen && currentMatches.length === 1) {
+        selectEmployee(currentMatches[0]);
+      } else {
+        hideDropdown();
+        focusInTime();
+      }
+
+    } else if(e.key === 'Escape') {
+      hideDropdown();
+    }
+  });
+}
+
+// ── INPUT WIRING ───────────────────────────────────────────────
+// Field focus order:
+// ══════════════════════════════════════════════════════════════
+// KEYBOARD FLOW — every step driven by ENTER key only
+// ══════════════════════════════════════════════════════════════
+//
+//  empName  ──Enter──►  inTime  ──4 digits auto──►  outTime
+//                                                      │
+//                                              4 digits auto
+//                                                      │
+//                                                  [auto +1d?]
+//                                                      │
+//                                         Production? ─┤
+//                                              │       │ other depts
+//                                          mpSelect    │
+//                                              │       │
+//                                           Enter   Enter
+//                                              └──┬───┘
+//                                              addEntry ──► row saved
+//                                              focus returns to empName
+//                                              Enter again → inTime
+//
+// Backspace on empty field = go one step BACK
+// ══════════════════════════════════════════════════════════════
+
+function focusInTime()  { document.getElementById('inTime').focus(); }
+function focusOutTime() { document.getElementById('outTime').focus(); }
+function focusEmpName() { document.getElementById('empName').focus(); }
+
+function focusNdBtn()  { document.getElementById('ndBtn').focus(); }
+function focusAfterNd() {
+  // Next Day → Manpower (Production) or focus ADD ROW button
+  if(DEPT_HAS_MP[currentDept]) {
+    document.getElementById('mpSelect').focus();
+  } else {
+    const btn = document.getElementById('addBtn');
+    btn.focus();
+  }
+}
+function focusNextAfterOut() {
+  // Out Time always goes to Next Day first
+  focusNdBtn();
+}
+
+function goBack(from) {
+  if(from === 'inTime')  focusEmpName();
+  if(from === 'outTime') focusInTime();
+  if(from === 'nd')      focusOutTime();
+  if(from === 'mp')      focusNdBtn();
+}
+
+// ── EMPLOYEE NAME ──────────────────────────────────────────────
+// Enter: if dropdown open & item focused → select it (autocomplete handles)
+// Enter: otherwise → go to inTime
+document.getElementById('empName').addEventListener('keydown', function(e){
+  if(e.key === 'ArrowRight'){ e.preventDefault(); focusInTime(); return; }
+  if(e.key === 'ArrowLeft' ){ /* already at first field, do nothing */ return; }
+  if(e.key === 'Enter' || e.key === 'Tab'){
+    const dd = document.getElementById('empDropdown');
+    const hasFocused = dd.querySelector('.focused');
+    if(dd.classList.contains('open') && hasFocused) return;
+    e.preventDefault(); focusInTime();
+  }
+});
+
+// ── IN TIME ────────────────────────────────────────────────────
+// Typing 4 digits → auto move to outTime
+// Enter → move to outTime (even if fewer digits typed)
+// Backspace on empty → go back to empName
+document.getElementById('inTime').addEventListener('focus', function(){
+  // Select all on focus so typing replaces existing value instantly
+  this.select();
+});
+document.getElementById('inTime').addEventListener('input', function(){
+  this.value = this.value.replace(/\D/g,'').slice(0,4);
+  if(this.value.length === 4) focusOutTime();
+});
+document.getElementById('inTime').addEventListener('keydown', function(e){
+  if(e.key === 'ArrowRight'){ e.preventDefault(); focusOutTime(); return; }
+  if(e.key === 'ArrowLeft' ){ e.preventDefault(); goBack('inTime'); return; }
+  if(e.key === 'Backspace' && this.value.length === 0){ e.preventDefault(); goBack('inTime'); return; }
+  if(e.key === 'Enter' || e.key === 'Tab'){ e.preventDefault(); focusOutTime(); }
+});
+
+// ── OUT TIME ───────────────────────────────────────────────────
+// Typing 4 digits → auto detect +1day then move forward
+// Enter → move forward (even if fewer digits typed)
+// Space → toggle +1 day
+// Backspace on empty → go back to inTime
+document.getElementById('outTime').addEventListener('focus', function(){
+  // Select all on focus so typing replaces existing value instantly
+  this.select();
+});
+document.getElementById('outTime').addEventListener('input', function(){
+  this.value = this.value.replace(/\D/g,'').slice(0,4);
+  if(this.value.length === 4){
+    const inM  = parseTime(document.getElementById('inTime').value);
+    const outM = parseTime(this.value);
+    // Auto +1 day: out <= in means crossing midnight or full 24h
+    if(inM !== null && outM !== null && outM <= inM && !ndOn){
+      ndOn = true;
+      document.getElementById('ndBtn').className = 'nd-btn on';
+      document.getElementById('ndCheck').textContent = '\u2713';
+    }
+    focusNextAfterOut();
+  }
+});
+document.getElementById('outTime').addEventListener('keydown', function(e){
+  if(e.key === 'ArrowRight'){ e.preventDefault(); focusNextAfterOut(); return; }
+  if(e.key === 'ArrowLeft' ){ e.preventDefault(); goBack('outTime'); return; }
+  if(e.key === 'Backspace' && this.value.length === 0){ e.preventDefault(); goBack('outTime'); return; }
+  if(e.key === ' '){ e.preventDefault(); toggleND(); return; }
+  if(e.key === 'Enter' || e.key === 'Tab'){ e.preventDefault(); focusNextAfterOut(); }
+});
+
+// ── MANPOWER SELECT (Production only) ─────────────────────────
+// Enter → add the row immediately
+// Backspace → go back to outTime
+document.getElementById('mpSelect').addEventListener('keydown', function(e){
+  if(e.key === 'ArrowRight'){ e.preventDefault(); document.getElementById('addBtn').focus(); return; }
+  if(e.key === 'ArrowLeft' ){ e.preventDefault(); goBack('mp'); return; }
+  if(e.key === 'Enter' || e.key === 'Tab'){ e.preventDefault(); addEntry(); }
+});
+
+// ── +1 DAY BUTTON ──────────────────────────────────────────────
+document.getElementById('ndBtn').addEventListener('keydown', function(e){
+  if(e.key === 'ArrowRight' || e.key === 'Tab' || e.key === 'Enter'){
+    e.preventDefault(); focusAfterNd(); return;  // Enter/Arrow → go to Add Row
+  }
+  if(e.key === 'ArrowLeft' || e.key === 'Backspace'){
+    e.preventDefault(); goBack('nd'); return;    // ← back to Out Time
+  }
+  if(e.key === ' '){
+    e.preventDefault(); toggleND();              // Space = toggle +1day, stay here
+  }
+});
+
+
+// ── ADD ROW BUTTON ─────────────────────────────────────────────
+// Focused here = user is one Enter press away from adding the row
+// Arrow ← or Backspace → go back to Next Day (or mp for Production)
+document.getElementById('addBtn').addEventListener('keydown', function(e){
+  if(e.key === 'Enter'){
+    e.preventDefault(); addEntry(); return;        // ✓ ADD THE ROW
+  }
+  if(e.key === 'ArrowLeft' || e.key === 'Backspace'){
+    e.preventDefault();
+    if(DEPT_HAS_MP[currentDept]) document.getElementById('mpSelect').focus();
+    else document.getElementById('ndBtn').focus();
+    return;
+  }
+});
+// ── BOOT ───────────────────────────────────────────────────────
+
+// ── STARTUP DATA RECOVERY ──────────────────────────────────────
+function checkForData() {
+  // Check if any sot3_ data exists in localStorage
+  let hasData = false;
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    if(k&&k.startsWith('sot3_')&&k!=='sot3_theme'&&k!=='sot3_employees'){
+      hasData=true; break;
+    }
+  }
+  // Also check if any sheets have entries
+  if(!hasData) {
+    let totalEntries=0;
+    DEPTS.forEach(d=>{ (sheets[d]||[]).forEach(s=>totalEntries+=s.entries.length); });
+    if(totalEntries===0){
+      // Show recovery banner after short delay (let app init first)
+      setTimeout(()=>{
+        document.getElementById('recoveryBanner').style.display='flex';
+      }, 600);
+    }
+  }
+}
+
+function recoveryStartFresh() {
+  document.getElementById('recoveryBanner').style.display='none';
+}
+
+function recoveryOpenPacked() {
+  document.getElementById('recoveryBanner').style.display='none';
+  showToast('Open the _PACKED.html file in your browser instead of this file','warn');
+}
+
+function recoveryImportFile(evt) {
+  const file = evt.target.files[0]; if(!file) return;
+  syncFromBackup(file);
+  evt.target.value='';
+}
+
+
+
+// ── CLEAR ALL & REPLACE ────────────────────────────────────────
+function clearAndReplace() {
+  closeExport();
+
+  // Count current data
+  let totalSheets=0, totalEntries=0;
+  DEPTS.forEach(d=>{
+    for(let y=2024;y<=2030;y++){
+      for(let m=1;m<=12;m++){
+        const key=`sot3_${d}_${y}_${String(m).padStart(2,'0')}`;
+        try{
+          const raw=localStorage.getItem(key);
+          if(raw){
+            const sheets=JSON.parse(raw);
+            totalSheets+=sheets.length;
+            sheets.forEach(s=>totalEntries+=(s.entries||[]).length);
+          }
+        }catch(e){}
+      }
+    }
+  });
+
+  if(totalSheets===0) {
+    // No data to lose — go straight to import
+    showToast('No existing data — just use Merge tool to load fresh file','ok');
+    setTimeout(openMerge, 500);
+    return;
+  }
+
+  // Show warning with backup prompt
+  showConfirm(
+    '🗑️ Clear All Data',
+    `This will permanently delete ALL your local data:\n\n• ${totalSheets} sheets\n• ${totalEntries} entries\n• All departments, all months\n\n⚠ IMPORTANT: Take a backup FIRST before clearing!\n\nHave you already taken a 💾 Backup?`,
+    () => {
+      // Second confirmation - absolute last chance
+      showConfirm(
+        '⚠ Final Confirmation',
+        'Are you absolutely sure? This CANNOT be undone.\n\nAll data will be wiped. Only proceed if you have a backup file saved.',
+        () => {
+          doActualClear();
+        },
+        '🗑️ Yes, Delete Everything'
+      );
+    },
+    '✓ Yes, I Have a Backup'
+  );
+}
+
+function doActualClear() {
+  // Remove all sot3_ keys from localStorage
+  const keysToRemove = [];
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    if(k && k.startsWith('sot3_') && k!=='sot3_theme') {
+      keysToRemove.push(k);
+    }
+  }
+  keysToRemove.forEach(k=>localStorage.removeItem(k));
+
+  // Reset in-memory state
+  sheets={};
+  activeIds={};
+  sheetCtr=0;
+  entryCtr=0;
+
+  // Re-init with fresh empty sheets
+  DEPTS.forEach(d=>{
+    sheets[d]=[];
+    _createSheet(d);
+  });
+  DEPTS.forEach(d=>{
+    if(sheets[d].length>0) activeIds[d]=sheets[d][0].id;
+  });
+
+  renderAll();
+  showToast('✓ All data cleared — now open Merge to load fresh file','ok');
+
+  // Automatically open merge tool
+  setTimeout(openMerge, 800);
+}
+
+// ── QUICK BACKUP & SYNC ────────────────────────────────────────
+const BACKUP_VERSION_KEY = 'sot3_last_backup';
+
+function quickBackup() {
+  // Collect all app data from localStorage
+  const payload = { version: 3, exportedAt: new Date().toISOString(),
+    month: currentMonth, year: currentYear, sheets: {} };
+
+  // Save ALL months, ALL depts
+  const allKeys = {};
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    if(!k) continue;
+    if(k.startsWith('sot3_') && k!=='sot3_theme'){
+      try{ allKeys[k]=localStorage.getItem(k); }catch(e){}
+    }
+  }
+  // Also build sheets object for compatibility
+  DEPTS.forEach(d=>{
+    const allSheets=[];
+    // Scan all months
+    for(let y=2024;y<=2030;y++){
+      for(let m=1;m<=12;m++){
+        const key=`sot3_${d}_${y}_${String(m).padStart(2,'0')}`;
+        if(allKeys[key]){
+          try{
+            const parsed=JSON.parse(allKeys[key]);
+            parsed.forEach(s=>{ s._period={year:y,month:m}; allSheets.push(s); });
+          }catch(e){}
+        }
+      }
+    }
+    if(allSheets.length>0) payload.sheets[d]=allSheets;
+  });
+
+  payload._rawKeys = allKeys;  // Full raw backup for perfect restore
+
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const timeStr = `${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+  const fname   = `ShiftOT_BACKUP_${dateStr}_${timeStr}.json`;
+
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));
+  a.download=fname;
+  a.click();
+  URL.revokeObjectURL(a.href);
+
+  // Remember backup was taken
+  localStorage.setItem(BACKUP_VERSION_KEY, now.toISOString());
+  showToast(`✓ Backup saved: ${fname}`,'ok');
+}
+
+function syncFromBackup(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try{
+      const d = JSON.parse(e.target.result);
+
+      // Prefer _rawKeys (full restore) if available
+      if(d._rawKeys) {
+        let count=0;
+        Object.entries(d._rawKeys).forEach(([k,v])=>{
+          try{ localStorage.setItem(k,v); count++; }catch(err){}
+        });
+        // Reload all data
+        loadAll();
+        DEPTS.forEach(dept=>{
+          if(!sheets[dept]||sheets[dept].length===0){sheets[dept]=[];_createSheet(dept);}
+          if(!activeIds[dept]&&sheets[dept].length>0)activeIds[dept]=sheets[dept][0].id;
+        });
+        renderAll();
+        document.getElementById('recoveryBanner').style.display='none';
+        showToast(`✓ Restored ${count} data keys — all months loaded`,'ok');
+        return;
+      }
+
+      // Fallback: sheets-based restore
+      if(d.sheets){
+        Object.entries(d.sheets).forEach(([dept,list])=>{
+          if(!sheets[dept]) sheets[dept]=[];
+          list.forEach(s=>{
+            const p=s._period||{year:d.year||currentYear,month:d.month||currentMonth};
+            s.id=++sheetCtr;
+            (s.entries||[]).forEach(en=>en.id=++entryCtr);
+            // Store in correct period
+            const key=`sot3_${dept}_${p.year}_${String(p.month).padStart(2,'0')}`;
+            try{
+              let existing=[];
+              const raw=localStorage.getItem(key);
+              if(raw) existing=JSON.parse(raw);
+              existing.push(s);
+              localStorage.setItem(key,JSON.stringify(existing));
+            }catch(err){}
+          });
+        });
+        loadAll();
+        DEPTS.forEach(dept=>{
+          if(!sheets[dept]||sheets[dept].length===0){sheets[dept]=[];_createSheet(dept);}
+          if(!activeIds[dept]&&sheets[dept].length>0)activeIds[dept]=sheets[dept][0].id;
+        });
+        renderAll();
+        document.getElementById('recoveryBanner').style.display='none';
+        showToast('✓ Data restored from backup','ok');
+      }
+    }catch(err){ showToast('Invalid backup file','err'); }
+  };
+  reader.readAsText(file);
+}
+
+window.addEventListener('load', () => { loadTheme(); dedupeEmployees(); init(); setTimeout(checkForData, 800); });
+</script>
 </body>
 </html>
