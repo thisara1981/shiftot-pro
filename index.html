@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ShiftOT Pro</title>
@@ -653,6 +654,70 @@ html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--b
   border-radius:6px;padding:6px 12px;font-size:.78rem;font-weight:600;
   color:var(--green);margin-bottom:12px;text-align:center;}
 .pv-key-hint{font-size:.62rem;color:var(--text3);text-align:center;margin-top:8px;}
+
+/* ── CLOUD LOGIN ─────────────────────────────────────────── */
+#cloudLogin{position:fixed;inset:0;background:linear-gradient(135deg,#060810,#0d1526);
+  display:none;align-items:center;justify-content:center;z-index:9999;flex-direction:column;}
+.cl-box{background:#141824;border:1px solid #252d45;border-radius:16px;padding:40px;
+  width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.7);}
+.cl-logo{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+.cl-mark{width:40px;height:40px;background:linear-gradient(135deg,#2563eb,#7c3aed);
+  border-radius:10px;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:800;font-size:.9rem;flex-shrink:0;}
+.cl-title{font-size:1.3rem;font-weight:800;color:#e2e8f8;}
+.cl-sub{font-size:.68rem;color:#4a5578;text-transform:uppercase;letter-spacing:.12em;margin-bottom:24px;}
+.cl-label{font-size:.68rem;font-weight:600;color:#4a5578;text-transform:uppercase;
+  letter-spacing:.08em;margin-bottom:5px;display:block;}
+.cl-input{width:100%;background:#1c2235;border:1.5px solid #252d45;border-radius:8px;
+  color:#e2e8f8;font-family:inherit;font-size:.92rem;padding:10px 14px;outline:none;
+  transition:border-color .12s;margin-bottom:14px;}
+.cl-input:focus{border-color:#2563eb;}
+.cl-btn{width:100%;padding:12px;background:#2563eb;color:#fff;border:none;border-radius:8px;
+  font-family:inherit;font-size:.95rem;font-weight:700;cursor:pointer;margin-top:4px;}
+.cl-btn:hover{background:#1d4ed8;}
+.cl-btn:disabled{opacity:.6;cursor:not-allowed;}
+.cl-err{color:#f87171;font-size:.78rem;margin-top:10px;text-align:center;
+  background:#2a0a0a;border:1px solid rgba(220,38,38,.3);border-radius:6px;
+  padding:8px 12px;display:none;}
+.cl-footer{font-size:.62rem;color:#4a5578;text-align:center;margin-top:16px;line-height:1.6;}
+/* Cloud bar */
+#cloudBar{background:#1c2235;border-bottom:1px solid #252d45;padding:3px 16px;
+  font-size:.65rem;color:#4a5578;display:none;align-items:center;gap:8px;flex-shrink:0;}
+.c-dot{width:7px;height:7px;border-radius:50%;background:#10b981;flex-shrink:0;}
+.c-dot.saving{background:#f59e0b;animation:cpulse 1s infinite;}
+.c-dot.err{background:#ef4444;}
+@keyframes cpulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+/* Admin overlay */
+#adminFs{display:none;position:fixed;inset:0;background:var(--bg);z-index:800;flex-direction:column;overflow:hidden;}
+#adminFs.open{display:flex;}
+.adm-nav{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;
+  display:flex;align-items:center;gap:12px;flex-shrink:0;}
+.adm-body{flex:1;overflow-y:auto;padding:20px;}
+.adm-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;}
+.adm-kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;}
+.adm-kv{font-size:1.6rem;font-weight:800;font-family:var(--mono);}
+.adm-kl{font-size:.62rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-top:4px;}
+.adm-sec{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;margin:16px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--border2);}
+.adm-tbl{width:100%;border-collapse:collapse;font-size:.82rem;margin-bottom:20px;}
+.adm-tbl th{background:#1a2035;color:#a8b8e0;padding:8px 12px;font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;text-align:left;}
+.adm-tbl td{padding:9px 12px;border-bottom:1px solid var(--border);}
+.adm-tbl tr:hover td{background:var(--surface2);}
+.sbg{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:.65rem;font-weight:700;}
+.sbg.active{background:#052e16;color:#34d399;border:1px solid rgba(52,211,153,.3);}
+.sbg.expired{background:#2a0a0a;color:#f87171;border:1px solid rgba(248,113,113,.3);}
+.sbg.revoked{background:#1c1c1c;color:#6b7280;border:1px solid rgba(107,114,128,.3);}
+.ab{padding:4px 9px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);
+  color:var(--text2);font-family:var(--font);font-size:.65rem;cursor:pointer;margin-left:3px;}
+.ab.r{border-color:rgba(220,38,38,.3);color:#f87171;}
+.ab.g{border-color:rgba(5,150,105,.3);color:#34d399;}
+.adm-form{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:flex-end;}
+.aff{display:flex;flex-direction:column;gap:4px;}
+.afl{font-size:.6rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;}
+.afi{background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:.8rem;padding:6px 10px;outline:none;}
+.afi:focus{border-color:var(--accent);}
+.afs{padding:7px 16px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-family:var(--font);font-size:.8rem;font-weight:700;cursor:pointer;}
+.btn-admin-nav{background:#1e3a8a;color:#93c5fd;border-color:rgba(59,130,246,.4);}
+.btn-admin-nav:hover{background:#1e40af;}
 /* ── THEME TOGGLE ── */
 .theme-toggle{display:flex;align-items:center;gap:4px;background:var(--surface2);border:1.5px solid var(--border2);border-radius:20px;padding:3px;cursor:default;flex-shrink:0;}
 .theme-option{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:16px;font-size:.75rem;font-weight:600;cursor:pointer;transition:all .18s;color:var(--text3);white-space:nowrap;border:none;background:none;font-family:var(--font);}
@@ -1458,6 +1523,13 @@ function stKey(dept,y,m) {
 function saveDept(dept) {
   try { localStorage.setItem(stKey(dept,currentYear,currentMonth), JSON.stringify(sheets[dept]||[])); }
   catch(e) { showToast('Storage full — export a backup','warn'); }
+
+  // Cloud sync hook
+  if(window._cloudMode && window._sb) {
+    cloudSetStatus("saving","Saving...");
+    clearTimeout(window._cloudTimer);
+    window._cloudTimer = setTimeout(()=>cloudSaveDept(dept), 1500);
+  }
 }
 function loadDept(dept) {
   try {
@@ -3072,7 +3144,59 @@ function comparePDF() {
     Generated: ${new Date().toLocaleString()} &nbsp;·&nbsp;
     This report is for internal audit and invoice verification purposes only.
   </div>
-  </body></html>`;
+  
+<!-- ── CLOUD LOGIN SCREEN ── -->
+<div id="cloudLogin">
+  <div class="cl-box">
+    <div class="cl-logo"><div class="cl-mark">S+</div><div class="cl-title">ShiftOT Pro</div></div>
+    <div class="cl-sub">Cloud Edition — Secure Access</div>
+    <label class="cl-label">Email</label>
+    <input class="cl-input" type="email" id="cloudEmail" placeholder="you@company.com" autocomplete="email">
+    <label class="cl-label">Password</label>
+    <input class="cl-input" type="password" id="cloudPwd" placeholder="••••••••" autocomplete="current-password">
+    <button class="cl-btn" id="cloudLoginBtn" onclick="cloudDoLogin()">Sign In</button>
+    <div class="cl-err" id="cloudErr"></div>
+    <div class="cl-footer">&copy; 2026 ShiftOT Pro &nbsp;&middot;&nbsp; Contact admin for access</div>
+  </div>
+</div>
+
+<!-- ── CLOUD STATUS BAR ── -->
+<div id="cloudBar">
+  <div class="c-dot" id="cDot"></div>
+  <span id="cMsg">Connected</span>
+  <span style="margin-left:auto;display:flex;gap:10px;align-items:center;">
+    <span id="cUser" style="font-weight:600;font-size:.68rem;"></span>
+    <span id="cRole" style="opacity:.6;font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;"></span>
+  </span>
+</div>
+
+<!-- ── ADMIN PANEL ── -->
+<div id="adminFs">
+  <div class="adm-nav">
+    <div style="font-size:1rem;font-weight:800;color:var(--text);">&#9881;&#65039; Admin Panel</div>
+    <div style="margin-left:auto;display:flex;gap:8px;">
+      <button class="btn" onclick="cloudAdminLoad()" style="color:var(--green);">&#128260; Refresh</button>
+      <button class="btn" onclick="document.getElementById('adminFs').className=''">&#10005; Close</button>
+    </div>
+  </div>
+  <div class="adm-body">
+    <div class="adm-kpis" id="admKpis"></div>
+    <div class="adm-sec">Create New User</div>
+    <div class="adm-form">
+      <div class="aff"><label class="afl">Email</label><input class="afi" id="nuEmail" type="email" placeholder="user@company.com"></div>
+      <div class="aff"><label class="afl">Password</label><input class="afi" id="nuPwd" placeholder="min 6 chars"></div>
+      <div class="aff"><label class="afl">Company</label><input class="afi" id="nuCo" placeholder="Company name"></div>
+      <div class="aff"><label class="afl">Expires</label><input class="afi" id="nuExp" type="date"></div>
+      <button class="afs" onclick="cloudAdminCreateUser()">Create</button>
+    </div>
+    <div class="adm-sec">All Users</div>
+    <table class="adm-tbl"><thead><tr><th>Email</th><th>Company</th><th>Role</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody id="admUsers"></tbody></table>
+    <div class="adm-sec">Current Month Data</div>
+    <div id="admData"></div>
+  </div>
+</div>
+</body></html>`;
 
   const blob=new Blob([html],{type:'text/html'});
   const url=URL.createObjectURL(blob);
@@ -3579,7 +3703,59 @@ function summaryPDF() {
     This summary is generated from ShiftOT Pro and should be verified against attendance records before invoice payment.
     &nbsp;·&nbsp; Generated: ${new Date().toLocaleString()}
   </div>
-  </body></html>`;
+  
+<!-- ── CLOUD LOGIN SCREEN ── -->
+<div id="cloudLogin">
+  <div class="cl-box">
+    <div class="cl-logo"><div class="cl-mark">S+</div><div class="cl-title">ShiftOT Pro</div></div>
+    <div class="cl-sub">Cloud Edition — Secure Access</div>
+    <label class="cl-label">Email</label>
+    <input class="cl-input" type="email" id="cloudEmail" placeholder="you@company.com" autocomplete="email">
+    <label class="cl-label">Password</label>
+    <input class="cl-input" type="password" id="cloudPwd" placeholder="••••••••" autocomplete="current-password">
+    <button class="cl-btn" id="cloudLoginBtn" onclick="cloudDoLogin()">Sign In</button>
+    <div class="cl-err" id="cloudErr"></div>
+    <div class="cl-footer">&copy; 2026 ShiftOT Pro &nbsp;&middot;&nbsp; Contact admin for access</div>
+  </div>
+</div>
+
+<!-- ── CLOUD STATUS BAR ── -->
+<div id="cloudBar">
+  <div class="c-dot" id="cDot"></div>
+  <span id="cMsg">Connected</span>
+  <span style="margin-left:auto;display:flex;gap:10px;align-items:center;">
+    <span id="cUser" style="font-weight:600;font-size:.68rem;"></span>
+    <span id="cRole" style="opacity:.6;font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;"></span>
+  </span>
+</div>
+
+<!-- ── ADMIN PANEL ── -->
+<div id="adminFs">
+  <div class="adm-nav">
+    <div style="font-size:1rem;font-weight:800;color:var(--text);">&#9881;&#65039; Admin Panel</div>
+    <div style="margin-left:auto;display:flex;gap:8px;">
+      <button class="btn" onclick="cloudAdminLoad()" style="color:var(--green);">&#128260; Refresh</button>
+      <button class="btn" onclick="document.getElementById('adminFs').className=''">&#10005; Close</button>
+    </div>
+  </div>
+  <div class="adm-body">
+    <div class="adm-kpis" id="admKpis"></div>
+    <div class="adm-sec">Create New User</div>
+    <div class="adm-form">
+      <div class="aff"><label class="afl">Email</label><input class="afi" id="nuEmail" type="email" placeholder="user@company.com"></div>
+      <div class="aff"><label class="afl">Password</label><input class="afi" id="nuPwd" placeholder="min 6 chars"></div>
+      <div class="aff"><label class="afl">Company</label><input class="afi" id="nuCo" placeholder="Company name"></div>
+      <div class="aff"><label class="afl">Expires</label><input class="afi" id="nuExp" type="date"></div>
+      <button class="afs" onclick="cloudAdminCreateUser()">Create</button>
+    </div>
+    <div class="adm-sec">All Users</div>
+    <table class="adm-tbl"><thead><tr><th>Email</th><th>Company</th><th>Role</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody id="admUsers"></tbody></table>
+    <div class="adm-sec">Current Month Data</div>
+    <div id="admData"></div>
+  </div>
+</div>
+</body></html>`;
 
   const blob=new Blob([html],{type:'text/html'});
   const url=URL.createObjectURL(blob);
@@ -4458,7 +4634,59 @@ function doPDF() {
   }
 
   html+=`<div class="footer-note">ShiftOT Pro · ${MONTHS[currentMonth-1]} ${currentYear} · ${scopeLabel} · ${new Date().toLocaleString()}</div>
-  </body></html>`;
+  
+<!-- ── CLOUD LOGIN SCREEN ── -->
+<div id="cloudLogin">
+  <div class="cl-box">
+    <div class="cl-logo"><div class="cl-mark">S+</div><div class="cl-title">ShiftOT Pro</div></div>
+    <div class="cl-sub">Cloud Edition — Secure Access</div>
+    <label class="cl-label">Email</label>
+    <input class="cl-input" type="email" id="cloudEmail" placeholder="you@company.com" autocomplete="email">
+    <label class="cl-label">Password</label>
+    <input class="cl-input" type="password" id="cloudPwd" placeholder="••••••••" autocomplete="current-password">
+    <button class="cl-btn" id="cloudLoginBtn" onclick="cloudDoLogin()">Sign In</button>
+    <div class="cl-err" id="cloudErr"></div>
+    <div class="cl-footer">&copy; 2026 ShiftOT Pro &nbsp;&middot;&nbsp; Contact admin for access</div>
+  </div>
+</div>
+
+<!-- ── CLOUD STATUS BAR ── -->
+<div id="cloudBar">
+  <div class="c-dot" id="cDot"></div>
+  <span id="cMsg">Connected</span>
+  <span style="margin-left:auto;display:flex;gap:10px;align-items:center;">
+    <span id="cUser" style="font-weight:600;font-size:.68rem;"></span>
+    <span id="cRole" style="opacity:.6;font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;"></span>
+  </span>
+</div>
+
+<!-- ── ADMIN PANEL ── -->
+<div id="adminFs">
+  <div class="adm-nav">
+    <div style="font-size:1rem;font-weight:800;color:var(--text);">&#9881;&#65039; Admin Panel</div>
+    <div style="margin-left:auto;display:flex;gap:8px;">
+      <button class="btn" onclick="cloudAdminLoad()" style="color:var(--green);">&#128260; Refresh</button>
+      <button class="btn" onclick="document.getElementById('adminFs').className=''">&#10005; Close</button>
+    </div>
+  </div>
+  <div class="adm-body">
+    <div class="adm-kpis" id="admKpis"></div>
+    <div class="adm-sec">Create New User</div>
+    <div class="adm-form">
+      <div class="aff"><label class="afl">Email</label><input class="afi" id="nuEmail" type="email" placeholder="user@company.com"></div>
+      <div class="aff"><label class="afl">Password</label><input class="afi" id="nuPwd" placeholder="min 6 chars"></div>
+      <div class="aff"><label class="afl">Company</label><input class="afi" id="nuCo" placeholder="Company name"></div>
+      <div class="aff"><label class="afl">Expires</label><input class="afi" id="nuExp" type="date"></div>
+      <button class="afs" onclick="cloudAdminCreateUser()">Create</button>
+    </div>
+    <div class="adm-sec">All Users</div>
+    <table class="adm-tbl"><thead><tr><th>Email</th><th>Company</th><th>Role</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody id="admUsers"></tbody></table>
+    <div class="adm-sec">Current Month Data</div>
+    <div id="admData"></div>
+  </div>
+</div>
+</body></html>`;
 
   // Use Blob URL to avoid blank first page in Chrome/Edge
   const blob = new Blob([html], {type:'text/html'});
@@ -5198,7 +5426,334 @@ function syncFromBackup(file) {
   reader.readAsText(file);
 }
 
-window.addEventListener('load', () => { loadTheme(); dedupeEmployees(); init(); setTimeout(checkForData, 800); });
+// ── CLOUD BOOT ────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  loadTheme(); dedupeEmployees();
+  const _sbClient = supabase.createClient(
+    'https://zwrdxaboowtdknaxebjj.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3cmR4YWJvb3d0ZGtuYXhlYmpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxMjQ1MTksImV4cCI6MjEwMTcwMDUxOX0.x13PcpseDUF7ypOI22Jxt2QaHa_JecqTFgN0R-rrPRs'
+  );
+  window._sb = _sbClient;
+  // Check existing session
+  _sbClient.auth.getSession().then(({data:{session}}) => {
+    if(session) { cloudAfterLogin(session.user); }
+    else { document.getElementById('cloudLogin').style.display='flex'; }
+  });
+  // Login keyboard
+  const em=document.getElementById('cloudEmail');
+  const pw=document.getElementById('cloudPwd');
+  if(em) em.addEventListener('keydown',e=>{ if(e.key==='Enter') pw.focus(); });
+  if(pw) pw.addEventListener('keydown',e=>{ if(e.key==='Enter') cloudDoLogin(); });
+});
+
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  CLOUD FUNCTIONS                                             ║
+// ╚══════════════════════════════════════════════════════════════╝
+window._cloudMode = false;
+window._cloudTimer = null;
+window._cloudProfile = null;
+
+function cloudSetStatus(type, msg) {
+  const dot = document.getElementById('cDot');
+  const txt = document.getElementById('cMsg');
+  if (!dot || !txt) return;
+  dot.className = 'c-dot' + (type==='saving'?' saving':type==='err'?' err':'');
+  txt.textContent = msg;
+}
+
+function cloudDoLogin() {
+  const email = document.getElementById('cloudEmail').value.trim();
+  const pwd   = document.getElementById('cloudPwd').value;
+  const err   = document.getElementById('cloudErr');
+  const btn   = document.getElementById('cloudLoginBtn');
+  err.style.display = 'none';
+  if (!email || !pwd) { err.textContent='Enter email and password'; err.style.display='block'; return; }
+  btn.disabled = true; btn.textContent = 'Signing in...';
+  window._sb.auth.signInWithPassword({email, password:pwd}).then(({data, error}) => {
+    if (error) {
+      err.textContent = error.message;
+      err.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Sign In';
+      return;
+    }
+    cloudAfterLogin(data.user);
+  });
+}
+
+async function cloudAfterLogin(user) {
+  const {data:prof} = await window._sb.from('profiles').select('*').eq('id', user.id).single();
+  window._cloudProfile = prof;
+  // Check expiry
+  if (prof?.expires_at && new Date(prof.expires_at) < new Date()) {
+    const err = document.getElementById('cloudErr');
+    err.textContent = 'Access expired ' + new Date(prof.expires_at).toLocaleDateString('en-GB') + '. Contact admin.';
+    err.style.display = 'block';
+    document.getElementById('cloudLoginBtn').disabled = false;
+    document.getElementById('cloudLoginBtn').textContent = 'Sign In';
+    window._sb.auth.signOut(); return;
+  }
+  if (prof?.is_active === false) {
+    const err = document.getElementById('cloudErr');
+    err.textContent = 'Account revoked. Contact admin.';
+    err.style.display = 'block';
+    document.getElementById('cloudLoginBtn').disabled = false;
+    document.getElementById('cloudLoginBtn').textContent = 'Sign In';
+    window._sb.auth.signOut(); return;
+  }
+  window._cloudMode = true;
+  // Hide login, show cloud bar
+  document.getElementById('cloudLogin').style.display = 'none';
+  const bar = document.getElementById('cloudBar');
+  bar.style.display = 'flex';
+  // Insert cloud bar after topnav
+  const nav = document.querySelector('.topnav') || document.querySelector('nav');
+  if (nav && nav.parentNode) nav.parentNode.insertBefore(bar, nav.nextSibling);
+  document.getElementById('cUser').textContent = prof?.company_name || user.email;
+  document.getElementById('cRole').textContent = prof?.role === 'admin' ? 'Administrator' : 'Client';
+  // Add admin button
+  if (prof?.role === 'admin') {
+    const na = document.querySelector('.nav-actions');
+    if (na) {
+      const ab = document.createElement('button');
+      ab.className = 'btn btn-admin-nav';
+      ab.textContent = 'Admin Panel';
+      ab.onclick = () => { document.getElementById('adminFs').className='open'; cloudAdminLoad(); };
+      na.insertBefore(ab, na.firstChild);
+    }
+  }
+  // Add sign out button
+  const na2 = document.querySelector('.nav-actions');
+  if (na2) {
+    const lb = document.createElement('button');
+    lb.className = 'btn';
+    lb.style.cssText = 'background:#2a0a0a;color:#f87171;border-color:rgba(220,38,38,.3);';
+    lb.textContent = 'Sign Out';
+    lb.onclick = cloudSignOut;
+    na2.appendChild(lb);
+  }
+  cloudSetStatus('ok', 'Connected');
+  // Load cloud data then init app
+  await cloudLoadData();
+  init();
+}
+
+function cloudSignOut() {
+  window._sb.auth.signOut();
+  window._cloudMode = false;
+  window._cloudProfile = null;
+  document.getElementById('cloudBar').style.display = 'none';
+  document.getElementById('cloudLogin').style.display = 'flex';
+  document.getElementById('cloudLoginBtn').disabled = false;
+  document.getElementById('cloudLoginBtn').textContent = 'Sign In';
+  document.getElementById('cloudEmail').value = '';
+  document.getElementById('cloudPwd').value = '';
+}
+
+async function cloudLoadData() {
+  if (!window._sb || !window._cloudMode) return;
+  cloudSetStatus('saving', 'Loading from cloud...');
+  try {
+    const uid = (await window._sb.auth.getUser()).data.user.id;
+    const {data, error} = await window._sb.from('attendance_data')
+      .select('*').eq('user_id', uid)
+      .eq('year', currentYear).eq('month', currentMonth);
+    if (error) throw error;
+    if (data) data.forEach(row => {
+      if (row.data && row.data.length > 0) {
+        sheets[row.dept] = row.data;
+        sheets[row.dept].forEach(s => {
+          if (s.id > sheetCtr) sheetCtr = s.id;
+          (s.entries||[]).forEach(e => { if(e.id > entryCtr) entryCtr = e.id; });
+        });
+        if (!activeIds[row.dept] && sheets[row.dept].length > 0)
+          activeIds[row.dept] = sheets[row.dept][0].id;
+      }
+    });
+    cloudSetStatus('ok', 'Synced ' + new Date().toLocaleTimeString());
+  } catch(e) { cloudSetStatus('err', 'Load error: ' + e.message); }
+}
+
+async function cloudSaveDept(dept) {
+  if (!window._sb || !window._cloudMode) return;
+  try {
+    const uid = (await window._sb.auth.getUser()).data.user.id;
+    const {error} = await window._sb.from('attendance_data').upsert({
+      user_id: uid, dept, year: currentYear, month: currentMonth,
+      data: sheets[dept] || [], updated_at: new Date().toISOString()
+    }, {onConflict: 'user_id,dept,year,month'});
+    if (error) throw error;
+    cloudSetStatus('ok', 'Saved ' + new Date().toLocaleTimeString());
+  } catch(e) { cloudSetStatus('err', 'Save failed: ' + e.message); }
+}
+
+// Reload cloud data when period changes
+const _origLoadAll = typeof loadAll === 'function' ? loadAll : null;
+window.addEventListener('periodChange', () => {
+  if (window._cloudMode) cloudLoadData().then(() => renderAll());
+});
+
+// Admin functions
+async function cloudAdminLoad() {
+  const sb = window._sb;
+  const prof = window._cloudProfile;
+  if (!prof || prof.role !== 'admin') return;
+  const {data:profiles} = await sb.from('profiles').select('*').order('created_at');
+  const now = new Date();
+  const active = profiles.filter(p => p.is_active && (!p.expires_at || new Date(p.expires_at) > now)).length;
+  const expired = profiles.filter(p => p.expires_at && new Date(p.expires_at) < now).length;
+  document.getElementById('admKpis').innerHTML =
+    '<div class="adm-kpi"><div class="adm-kv" style="color:var(--accent);">' + profiles.length + '</div><div class="adm-kl">Total Users</div></div>' +
+    '<div class="adm-kpi"><div class="adm-kv" style="color:var(--green);">' + active + '</div><div class="adm-kl">Active</div></div>' +
+    '<div class="adm-kpi"><div class="adm-kv" style="color:var(--red);">' + expired + '</div><div class="adm-kl">Expired</div></div>' +
+    '<div class="adm-kpi"><div class="adm-kv" style="color:var(--amber);">' + (profiles.length-active-expired) + '</div><div class="adm-kl">Revoked</div></div>';
+
+  document.getElementById('admUsers').innerHTML = profiles.map(p => {
+    const isExp = p.expires_at && new Date(p.expires_at) < now;
+    const sc = !p.is_active ? 'revoked' : isExp ? 'expired' : 'active';
+    const exp = p.expires_at ? new Date(p.expires_at).toLocaleDateString('en-GB') : 'Never';
+    const uid=p.id;
+    return '<tr>' +
+      '<td>' + (p.email||'') + '</td><td>' + (p.company_name||'') + '</td>' +
+      '<td><span style="font-size:.65rem;background:' + (p.role==='admin'?'#1e3a8a':'#1c1c1c') + ';color:' + (p.role==='admin'?'#93c5fd':'#6b7280') + ';padding:2px 7px;border-radius:4px;">' + (p.role||'') + '</span></td>' +
+      '<td style="font-family:var(--mono);font-size:.78rem;">' + exp + '</td>' +
+      '<td><span class="sbg ' + sc + '">' + sc + '</span></td>' +
+      '<td>' +
+        '<button class="ab" data-uid="'+uid+'" data-email="'+p.email+'" onclick="cloudAdminExtend(this.dataset.uid,this.dataset.email)">+30d</button>' +
+        '<button class="ab" data-uid="'+uid+'" data-email="'+p.email+'" onclick="cloudAdminSetExp(this.dataset.uid,this.dataset.email)">Expiry</button>' +
+        (p.is_active
+          ? '<button class="ab r" data-uid="'+uid+'" data-email="'+p.email+'" onclick="cloudAdminRevoke(this.dataset.uid,this.dataset.email)">Revoke</button>'
+          : '<button class="ab g" data-uid="'+uid+'" data-email="'+p.email+'" onclick="cloudAdminRestore(this.dataset.uid,this.dataset.email)">Restore</button>') +
+      '</td></tr>';
+  }).join('');
+
+  // Data summary
+  const {data:allData} = await sb.from('attendance_data')
+    .select('*').eq('year', now.getFullYear()).eq('month', now.getMonth()+1);
+  let html = '<table class="adm-tbl"><thead><tr><th>User</th><th>Dept</th><th>Sheets</th><th>Entries</th><th>Shifts</th><th>OT 1.5h</th><th>OT 2.5h</th><th>Total h</th></tr></thead><tbody>';
+  (allData||[]).forEach(row => {
+    const p = profiles.find(x => x.id === row.user_id);
+    const shts = row.data||[];
+    let sh=0,ot=0,sot=0,tot=0,ent=0;
+    shts.forEach(s => (s.entries||[]).forEach(e => {
+      const r=e.result, th=entryTotalH(r); ent++; tot+=th;
+      if(r.dayType==='special'||r.isHoliday) sot+=r.totalSOTHours||0;
+      else if(r.dayType==='poya') sot+=r.totalPoyaHours||0;
+      else if(r.fractional) sh+=r.fractionalShift;
+      else { sh+=r.shiftCount; ot+=r.totalOTMins/60; }
+    }));
+    html += '<tr>' +
+      '<td style="font-weight:600;">' + (p?.company_name||p?.email||'') + '</td>' +
+      '<td style="color:' + (DEPT_COLORS[row.dept]||'#fff') + ';">' + row.dept + '</td>' +
+      '<td style="text-align:center;">' + shts.length + '</td>' +
+      '<td style="text-align:center;">' + ent + '</td>' +
+      '<td style="text-align:center;font-family:var(--mono);color:#93c5fd;">' + fmt1(sh) + '</td>' +
+      '<td style="text-align:center;font-family:var(--mono);color:#6ee7b7;">' + fmt1(ot) + '</td>' +
+      '<td style="text-align:center;font-family:var(--mono);color:#fcd34d;">' + fmt1(sot) + '</td>' +
+      '<td style="text-align:center;font-family:var(--mono);color:#67e8f9;">' + fmt1(tot) + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('admData').innerHTML = html;
+}
+
+async function cloudAdminCreateUser() {
+  const sb = window._sb;
+  const email = document.getElementById('nuEmail').value.trim();
+  const pwd   = document.getElementById('nuPwd').value;
+  const co    = document.getElementById('nuCo').value.trim();
+  const exp   = document.getElementById('nuExp').value;
+  if (!email||!pwd) { showToast('Email and password required','err'); return; }
+  const {data, error} = await sb.auth.admin.createUser({email, password:pwd, email_confirm:true});
+  if (error) { showToast('Error: '+error.message,'err'); return; }
+  await sb.from('profiles').update({
+    company_name: co||email, role:'client',
+    allowed_depts: ['HRD'],
+    expires_at: exp ? new Date(exp).toISOString() : null,
+    is_active: true
+  }).eq('id', data.user.id);
+  showToast('Created: '+email,'ok');
+  document.getElementById('nuEmail').value='';
+  document.getElementById('nuPwd').value='';
+  document.getElementById('nuCo').value='';
+  document.getElementById('nuExp').value='';
+  cloudAdminLoad();
+}
+
+async function cloudAdminRevoke(id,email) {
+  if(!confirm('Revoke access for '+email+'?'))return;
+  await window._sb.from('profiles').update({is_active:false}).eq('id',id);
+  showToast('Revoked: '+email,'warn'); cloudAdminLoad();
+}
+async function cloudAdminRestore(id,email) {
+  await window._sb.from('profiles').update({is_active:true}).eq('id',id);
+  showToast('Restored: '+email,'ok'); cloudAdminLoad();
+}
+async function cloudAdminExtend(id,email) {
+  const {data} = await window._sb.from('profiles').select('expires_at').eq('id',id).single();
+  const base = data?.expires_at && new Date(data.expires_at) > new Date() ? new Date(data.expires_at) : new Date();
+  base.setDate(base.getDate()+30);
+  await window._sb.from('profiles').update({expires_at:base.toISOString()}).eq('id',id);
+  showToast('+30 days: '+email,'ok'); cloudAdminLoad();
+}
+async function cloudAdminSetExp(id,email) {
+  const d=prompt('Expiry date for '+email+' (YYYY-MM-DD):');
+  if(!d)return;
+  await window._sb.from('profiles').update({expires_at:new Date(d).toISOString()}).eq('id',id);
+  showToast('Expiry set','ok'); cloudAdminLoad();
+}
+
 </script>
+
+<!-- ── CLOUD LOGIN SCREEN ── -->
+<div id="cloudLogin">
+  <div class="cl-box">
+    <div class="cl-logo"><div class="cl-mark">S+</div><div class="cl-title">ShiftOT Pro</div></div>
+    <div class="cl-sub">Cloud Edition — Secure Access</div>
+    <label class="cl-label">Email</label>
+    <input class="cl-input" type="email" id="cloudEmail" placeholder="you@company.com" autocomplete="email">
+    <label class="cl-label">Password</label>
+    <input class="cl-input" type="password" id="cloudPwd" placeholder="••••••••" autocomplete="current-password">
+    <button class="cl-btn" id="cloudLoginBtn" onclick="cloudDoLogin()">Sign In</button>
+    <div class="cl-err" id="cloudErr"></div>
+    <div class="cl-footer">&copy; 2026 ShiftOT Pro &nbsp;&middot;&nbsp; Contact admin for access</div>
+  </div>
+</div>
+
+<!-- ── CLOUD STATUS BAR ── -->
+<div id="cloudBar">
+  <div class="c-dot" id="cDot"></div>
+  <span id="cMsg">Connected</span>
+  <span style="margin-left:auto;display:flex;gap:10px;align-items:center;">
+    <span id="cUser" style="font-weight:600;font-size:.68rem;"></span>
+    <span id="cRole" style="opacity:.6;font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;"></span>
+  </span>
+</div>
+
+<!-- ── ADMIN PANEL ── -->
+<div id="adminFs">
+  <div class="adm-nav">
+    <div style="font-size:1rem;font-weight:800;color:var(--text);">&#9881;&#65039; Admin Panel</div>
+    <div style="margin-left:auto;display:flex;gap:8px;">
+      <button class="btn" onclick="cloudAdminLoad()" style="color:var(--green);">&#128260; Refresh</button>
+      <button class="btn" onclick="document.getElementById('adminFs').className=''">&#10005; Close</button>
+    </div>
+  </div>
+  <div class="adm-body">
+    <div class="adm-kpis" id="admKpis"></div>
+    <div class="adm-sec">Create New User</div>
+    <div class="adm-form">
+      <div class="aff"><label class="afl">Email</label><input class="afi" id="nuEmail" type="email" placeholder="user@company.com"></div>
+      <div class="aff"><label class="afl">Password</label><input class="afi" id="nuPwd" placeholder="min 6 chars"></div>
+      <div class="aff"><label class="afl">Company</label><input class="afi" id="nuCo" placeholder="Company name"></div>
+      <div class="aff"><label class="afl">Expires</label><input class="afi" id="nuExp" type="date"></div>
+      <button class="afs" onclick="cloudAdminCreateUser()">Create</button>
+    </div>
+    <div class="adm-sec">All Users</div>
+    <table class="adm-tbl"><thead><tr><th>Email</th><th>Company</th><th>Role</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody id="admUsers"></tbody></table>
+    <div class="adm-sec">Current Month Data</div>
+    <div id="admData"></div>
+  </div>
+</div>
 </body>
 </html>
